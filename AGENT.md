@@ -33,7 +33,7 @@ The mock domain is **retail/e-commerce** with a database of customers, products,
 | Semantic View | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_ANALYTICS_SV` |
 | Agent | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_AGENT` |
 | Agent LLM | `claude-3-5-sonnet` |
-| LLM judge model | `claude-3-5-sonnet` |
+| LLM judge model | `claude-4-opus` (configurable in `config/environments.yaml` → `llm.judge_model`) |
 
 ### RBAC Roles
 
@@ -69,10 +69,9 @@ ai_evaluation_framework/
 │   └── agent/                            # answerable, out_of_scope, adversarial YAML
 ├── evaluation/
 │   ├── audit_semantic_view.py            # Best practices audit (DDL parsing, no SF connection)
-│   ├── audit_agent.py                    # Native EXECUTE_AI_EVALUATION wrapper
+│   ├── audit_agent.py                    # Native EXECUTE_AI_EVALUATION (GPA framework)
 │   ├── evaluate_semantic_view.py         # Batch SV eval with SQL comparison + LLM judge
-│   ├── evaluate_agent.py                 # Batch agent eval with RAG Triad scoring
-│   ├── llm_judge.py                      # LLM-as-a-Judge for ambiguous/agent evaluation
+│   ├── llm_judge.py                      # LLM-as-a-Judge for SV ambiguous evaluation
 │   └── utils.py                          # Shared: connection, SQL exec, analyst/agent calls
 ├── monitoring/
 │   ├── health_check.py                   # 7 PROD health checks (runnable locally or in CI)
@@ -104,11 +103,10 @@ ai_evaluation_framework/
 
 **Layer 1 — Audits (structural quality gate):**
 - `audit_semantic_view.py`: Parses DDL, checks documentation, naming, metadata, relationships, inconsistencies, duplicates. Severity-based pass/fail (CRITICAL/ERROR = fail).
-- `audit_agent.py`: Uses `EXECUTE_AI_EVALUATION` with `answer_correctness`, `logical_consistency`, and a custom `safety` metric. Requires OBJECT-typed `ground_truth` column.
+- `audit_agent.py`: Uses Snowflake's native `EXECUTE_AI_EVALUATION` with GPA framework metrics (`answer_correctness`, `logical_consistency`) plus custom metrics (`safety`, `groundedness`, `execution_efficiency`). Requires VARIANT-typed `ground_truth` column with `PARSE_JSON`.
 
 **Layer 2 — Question Bank Evaluation (accuracy gate):**
 - `evaluate_semantic_view.py`: Calls Cortex Analyst, compares generated SQL results to ground truth, uses LLM judge for ambiguous questions.
-- `evaluate_agent.py`: Calls Cortex Agent, scores with RAG Triad (Context Relevance, Groundedness, Answer Relevance) + safety boundary checks.
 
 ### Monitoring Layer
 
@@ -151,9 +149,9 @@ Run with `streamlit run monitoring/dashboard.py`. Uses `st.connection("snowflake
 |----------|---------|------|
 | `semantic_view_ci.yml` | PR on `semantic_views/` | Audit → eval → PR comment |
 | `semantic_view_cd.yml` | Merge to main | Audit gate → eval → deploy to PROD |
-| `agent_ci.yml` | PR on `agents/` | Custom eval → native eval → PR comment |
-| `agent_cd.yml` | Merge to main | Both evals → deploy to PROD |
-| `scheduled_eval.yml` | Weekly Monday 03:00 UTC | Health check → full SV + agent eval → summary |
+| `agent_ci.yml` | PR on `agents/` | Deploy to TEST → native GPA eval → PR comment |
+| `agent_cd.yml` | Merge to main | Native GPA eval gate → deploy to PROD |
+| `scheduled_eval.yml` | Manual (workflow_dispatch) | Health check → SV audit/eval → native agent eval → summary |
 
 ### Connection Pattern
 
@@ -165,15 +163,18 @@ conn = snowflake.connector.connect(
 )
 ```
 
-### Native Agent Evaluation Functions
-- `SYSTEM$EXECUTE_AI_EVALUATION` — start evaluation
-- `SYSTEM$GET_AI_EVALUATION_STATUS` — poll status
-- `SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA` — get results
-- `SNOWFLAKE.LOCAL.GET_AI_RECORD_TRACE` — drill into individual records
+### Native Agent Evaluation (GPA Framework)
+- `CALL EXECUTE_AI_EVALUATION('START', OBJECT_CONSTRUCT('run_name', '...'), '@stage/config.yaml')` — start evaluation
+- `CALL EXECUTE_AI_EVALUATION('STATUS', OBJECT_CONSTRUCT('run_name', '...'), '@stage/config.yaml')` — poll status
+- `SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA(db, schema, agent, 'CORTEX AGENT', run)` — get results
+- `SNOWFLAKE.LOCAL.GET_AI_RECORD_TRACE(db, schema, agent, 'CORTEX AGENT', record_id)` — drill into individual records
+- `SNOWFLAKE.LOCAL.GET_AI_OBSERVABILITY_LOGS(db, schema, agent, 'CORTEX AGENT')` — errors and warnings
 - `snowflake.local.ai_observability_events` — raw trace data
+- LLM judges auto-selected by Snowflake (`claude-4-sonnet` / `claude-3-5-sonnet`, cross-region inference)
 
 ### Configuration Files
-- `config/environments.yaml` — per-env database, schema, warehouse, SV name, agent name
+- `config/environments.yaml` — per-env database, schema, warehouse, SV name, agent name, LLM model config (`llm.model`, `llm.judge_model`)
+- `config/agent_evaluation_config.yaml` — reusable YAML config following Snowflake's Agent Evaluation YAML spec
 - `config/thresholds.yaml` — graduated accuracy thresholds (DEV 60% → TEST 75% → PROD 85%)
 - `config/monitoring.yaml` — alert thresholds, schedules, token cost estimates, notification settings
 

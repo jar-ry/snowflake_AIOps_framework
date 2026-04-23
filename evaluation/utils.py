@@ -33,6 +33,12 @@ def load_thresholds() -> dict:
         return yaml.safe_load(f)
 
 
+def get_llm_model(role: str = "model") -> str:
+    config = load_config()
+    llm_config = config.get("llm", {})
+    return llm_config.get(role, llm_config.get("model", "claude-4-opus"))
+
+
 def load_question_bank(bank_type: str, difficulty: str) -> list:
     path = os.path.join(
         os.path.dirname(__file__), "..", "question_banks", bank_type, f"{difficulty}_questions.yaml"

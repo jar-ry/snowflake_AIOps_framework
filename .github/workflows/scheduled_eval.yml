@@ -1,9 +1,16 @@
-name: Weekly Scheduled Evaluation & Health Check
+name: On-Demand Evaluation & Health Check
 
 on:
-  schedule:
-    - cron: '0 3 * * 1'  # Every Monday at 03:00 UTC
-  workflow_dispatch:       # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'Evaluation scope'
+        required: true
+        default: 'health-only'
+        type: choice
+        options:
+          - health-only
+          - full-evaluation
 
 permissions:
   contents: read
@@ -40,13 +47,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-health-report
+          name: health-report
           path: health_report.json
           retention-days: 90
 
   evaluate-semantic-view:
-    name: "Weekly SV Evaluation (PROD)"
+    name: "SV Evaluation (PROD)"
     needs: [health-check]
+    if: inputs.scope == 'full-evaluation'
     runs-on: ubuntu-latest
     environment: production
 
@@ -86,15 +94,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-sv-eval-results
+          name: sv-eval-results
           path: |
             sv_eval_results.json
             sv_audit_report.json
           retention-days: 90
 
   evaluate-agent:
-    name: "Weekly Agent Evaluation (PROD)"
+    name: "Agent Evaluation (PROD)"
     needs: [health-check]
+    if: inputs.scope == 'full-evaluation'
     runs-on: ubuntu-latest
     environment: production
 
@@ -110,21 +119,7 @@ jobs:
       - name: Install dependencies
         run: pip install snowflake-connector-python pyyaml
 
-      - name: Run custom question bank evaluation
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        run: |
-          python evaluation/evaluate_agent.py \
-            --environment prod \
-            --agent-name RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT \
-            --categories answerable,out_of_scope,adversarial \
-            --git-sha ${{ github.sha }} \
-            --git-branch main \
-            --output agent_eval_results.json || true
-
-      - name: Run native Snowflake agent evaluation
+      - name: Run native Snowflake EXECUTE_AI_EVALUATION (GPA framework)
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -133,7 +128,7 @@ jobs:
           python evaluation/audit_agent.py \
             --environment prod \
             --agent-name RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT \
-            --metrics answer_correctness,logical_consistency,safety \
+            --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch main \
             --timeout 600 \
@@ -143,14 +138,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-agent-eval-results
-          path: |
-            agent_eval_results.json
-            agent_native_eval_results.json
+          name: agent-eval-results
+          path: agent_native_eval_results.json
           retention-days: 90
 
-  weekly-summary:
-    name: "Generate Weekly Summary"
+  summary:
+    name: "Generate Summary"
     needs: [health-check, evaluate-semantic-view, evaluate-agent]
     if: always()
     runs-on: ubuntu-latest
@@ -169,7 +162,7 @@ jobs:
           summary = {'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)', 'checks': {}}
 
           for pattern in ['results/*/health_report.json', 'results/*/sv_eval_results.json',
-                          'results/*/agent_eval_results.json', 'results/*/agent_native_eval_results.json',
+                          'results/*/agent_native_eval_results.json',
                           'results/*/sv_audit_report.json']:
               for f in glob.glob(pattern):
                   name = os.path.basename(f).replace('.json', '')
@@ -193,17 +186,17 @@ jobs:
                   except Exception as e:
                       summary['checks'][name] = {'error': str(e)}
 
-          with open('weekly_summary.json', 'w') as f:
+          with open('eval_summary.json', 'w') as f:
               json.dump(summary, f, indent=2)
 
-          print('=== WEEKLY SUMMARY ===')
+          print('=== EVALUATION SUMMARY ===')
           print(json.dumps(summary, indent=2))
           "
 
-      - name: Upload weekly summary
+      - name: Upload summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: weekly-summary
-          path: weekly_summary.json
+          name: eval-summary
+          path: eval_summary.json
           retention-days: 365

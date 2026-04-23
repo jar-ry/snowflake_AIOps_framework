@@ -47,7 +47,7 @@ Built for data teams who want to **self-serve semantic view development** while 
 │  │  │  │  Easy  │  │   Hard   │  │ Ambiguous │               │  │   │
 │  │  │  └────────┘  └──────────┘  └───────────┘               │  │   │
 │  │  │                                                         │  │   │
-│  │  │  Agent (Custom RAG Triad):                              │  │   │
+│  │  │  Agent (Native GPA via EXECUTE_AI_EVALUATION):             │  │   │
 │  │  │  ┌────────────┐  ┌─────────────┐  ┌─────────────┐      │  │   │
 │  │  │  │ Answerable │  │Out of Scope │  │ Adversarial │      │  │   │
 │  │  │  └────────────┘  └─────────────┘  └─────────────┘      │  │   │
@@ -171,17 +171,11 @@ python evaluation/evaluate_semantic_view.py \
   --output sv_eval.json
 
 # --- Agent ---
-# Native Snowflake evaluation (EXECUTE_AI_EVALUATION)
+# Native Snowflake evaluation (GPA framework via EXECUTE_AI_EVALUATION)
 python evaluation/audit_agent.py \
   --environment dev \
   --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
-  --metrics answer_correctness,logical_consistency,safety \
-  --output agent_audit.json
-
-# Custom question bank evaluation (RAG Triad)
-python evaluation/evaluate_agent.py \
-  --environment dev \
-  --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
+  --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
   --output agent_eval.json
 ```
 
@@ -232,10 +226,9 @@ ai_evaluation_framework/
 │       └── adversarial_questions.yaml  # 10 adversarial/safety tests
 ├── evaluation/                         # Evaluation engine
 │   ├── audit_semantic_view.py          # Best practices audit (naming, docs, metadata)
-│   ├── audit_agent.py                  # Native Snowflake EXECUTE_AI_EVALUATION
-│   ├── evaluate_semantic_view.py       # Batch semantic view evaluation
-│   ├── evaluate_agent.py              # Batch agent evaluation (RAG Triad)
-│   ├── llm_judge.py                   # LLM-as-a-Judge for ambiguous evaluation
+│   ├── audit_agent.py                  # Native EXECUTE_AI_EVALUATION (GPA framework)
+│   ├── evaluate_semantic_view.py       # Batch SV evaluation (SQL comparison + LLM judge)
+│   ├── llm_judge.py                   # LLM-as-a-Judge for SV evaluation
 │   └── utils.py                       # Shared helpers (connection, SQL exec, etc.)
 ├── monitoring/                         # Health check & monitoring scripts
 │   ├── health_check.py                # PROD health checks (7 checks)
@@ -243,12 +236,13 @@ ai_evaluation_framework/
 ├── .github/workflows/                  # CI/CD pipelines
 │   ├── semantic_view_ci.yml            # On PR: audit → evaluate → comment
 │   ├── semantic_view_cd.yml            # On merge: audit gate → eval → promote
-│   ├── agent_ci.yml                    # On PR: custom eval → native eval → comment
-│   ├── agent_cd.yml                   # On merge: both evals → promote
-│   └── scheduled_eval.yml             # Weekly cron: health + full eval suite
+│   ├── agent_ci.yml                    # On PR: native GPA eval → comment
+│   ├── agent_cd.yml                   # On merge: native GPA eval gate → promote
+│   └── scheduled_eval.yml             # On-demand: health + SV eval + native agent eval
 ├── config/
-│   ├── environments.yaml              # Environment-specific configuration
+│   ├── environments.yaml              # Environment config + LLM model settings
 │   ├── thresholds.yaml                # Accuracy thresholds per environment
+│   ├── agent_evaluation_config.yaml   # Reusable GPA eval YAML config (Snowflake spec)
 │   └── monitoring.yaml                # Alert thresholds & schedule config
 ├── AGENT.md                           # CoCo agent instructions
 └── README.md                          # This file
@@ -277,17 +271,20 @@ Inspired by CoCo's semantic view audit skill, checks for:
 
 Exit code: 0 (pass, no CRITICAL/ERROR findings) or 1 (fail).
 
-**Agent Native Evaluation** (`audit_agent.py`):
+**Agent Native Evaluation (GPA Framework)** (`audit_agent.py`):
 
-Uses Snowflake's `EXECUTE_AI_EVALUATION` with:
+Uses Snowflake's `EXECUTE_AI_EVALUATION` with the GPA (Goal-Plan-Action) framework:
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `answer_correctness` | Built-in | Semantic match against ground truth |
-| `logical_consistency` | Built-in | Internal reasoning coherence (reference-free) |
-| `safety` | Custom LLM-judged | Scope compliance, PII protection, prompt injection resistance |
+| Metric | Type | GPA Alignment | Description |
+|--------|------|---------------|-------------|
+| `answer_correctness` | Built-in | Goal-Action | Semantic match against ground truth |
+| `logical_consistency` | Built-in | GPA | Internal reasoning coherence (reference-free) |
+| `safety` | Custom LLM-judged | — | Scope compliance, PII protection, prompt injection resistance |
+| `groundedness` | Custom LLM-judged | Goal-Action | Claims supported by tool outputs and retrieved data |
+| `execution_efficiency` | Custom LLM-judged | Plan-Action | Optimal tool selection and execution path |
 
 Results are viewable in Snowsight's AI Observability dashboard.
+LLM judges are auto-selected by Snowflake (`claude-4-sonnet` / `claude-3-5-sonnet`).
 
 ### Layer 2: Question Bank Evaluation (Accuracy)
 
@@ -299,14 +296,15 @@ Results are viewable in Snowsight's AI Observability dashboard.
 | **Hard** | 10 | SQL result comparison + LLM judge | 75% |
 | **Ambiguous** | 10 | LLM-as-a-Judge only | 60% |
 
-**Agent (RAG Triad)** (`evaluate_agent.py`):
+**Agent** (native GPA evaluation via `audit_agent.py`):
 
-| Metric | Description |
-|--------|-------------|
-| **Context Relevance** | Is the retrieved context relevant to the query? |
-| **Groundedness** | Is the response supported by the data/context? |
-| **Answer Relevance** | Is the answer relevant and helpful? |
-| **Safety** | Does the agent handle boundaries correctly? |
+| Metric | GPA Alignment | Description |
+|--------|---------------|-------------|
+| **Answer Correctness** | Goal-Action | Does the answer match ground truth? |
+| **Logical Consistency** | GPA | Are planning, tool calls, and reasoning coherent? |
+| **Safety** | Custom | Does the agent handle boundaries correctly? |
+| **Groundedness** | Goal-Action | Are claims supported by retrieved data? |
+| **Execution Efficiency** | Plan-Action | Was the tool selection and execution optimal? |
 
 | Category | Questions | Focus |
 |----------|-----------|-------|
@@ -343,19 +341,15 @@ PR Opened
 ```
 PR Opened
   │
-  ├── Job 1: Custom Question Bank Evaluation
-  │   ├── Deploy agent to TEST
-  │   └── evaluate_agent.py (RAG Triad + safety)
-  │
-  └── Job 2: Native Snowflake Evaluation
-      └── audit_agent.py (EXECUTE_AI_EVALUATION)
+  └── Job 1: Native Snowflake GPA Evaluation
+      ├── Deploy agent to TEST
+      └── audit_agent.py (EXECUTE_AI_EVALUATION with GPA metrics)
            │
-      Post combined results as PR comment
+      Post results as PR comment
            │
    Merge to main
            │
-           ├── evaluate_agent.py (custom question bank gate)
-           ├── audit_agent.py (native eval gate)
+           ├── audit_agent.py (native GPA eval gate)
            └── Deploy to PROD
 ```
 
@@ -479,7 +473,7 @@ Add rows to `setup/06_eval_dataset_setup.sql` (or use `audit_agent.py` which aut
 
 ```sql
 INSERT INTO RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT_EVAL_DATASET (input_query, ground_truth)
-VALUES ('My new question?', OBJECT_CONSTRUCT('ground_truth_output', 'Expected answer'));
+VALUES ('My new question?', PARSE_JSON('{\"ground_truth_output\": \"Expected answer\"}'));
 ```
 
 ### Adding New Semantic Views
@@ -509,7 +503,7 @@ The framework includes a full monitoring layer for long-term tracking of agent h
 │                                                                  │
 │  SNOWFLAKE TASKS (automated)               GITHUB ACTIONS        │
 │  ┌──────────────────────────┐              ┌────────────────────┐ │
-│  │ Daily 02:00 Usage agg   │              │ Weekly Monday 03:00│ │
+│  │ Daily 02:00 Usage agg   │              │ On-demand (manual) │ │
 │  │ Daily 02:15 Feedback    │              │ Full eval suite    │ │
 │  │ Daily 02:30 Interaction │              │ + health check     │ │
 │  │      quality scan       │              │ + summary artifact │ │
@@ -560,7 +554,7 @@ The framework includes a full monitoring layer for long-term tracking of agent h
 | Daily 06:00 UTC | Health checks (SV exists, agent responds, error rate, latency) | Snowflake Task |
 | Sunday 04:00 UTC | PROD semantic view smoke test | Snowflake Task |
 | Sunday 05:00 UTC | PROD agent smoke test | Snowflake Task |
-| Monday 03:00 UTC | Full evaluation suite (health + SV audit/eval + agent eval/native) | GitHub Actions |
+| Monday 03:00 UTC | Full evaluation suite (health + SV audit/eval + native agent GPA eval) | GitHub Actions (on-demand) |
 
 ### Alerts
 

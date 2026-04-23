@@ -32,5 +32,6 @@ eval:
   warehouse: RETAIL_AI_EVAL_WH
 
 llm:
-  judge_model: claude-3-5-sonnet
+  model: claude-4-opus
+  judge_model: claude-4-opus
   analyst_model: default

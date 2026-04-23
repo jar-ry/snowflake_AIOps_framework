@@ -23,21 +23,7 @@ jobs:
       - name: Install dependencies
         run: pip install snowflake-connector-python pyyaml
 
-      - name: Run custom question bank evaluation on TEST
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        run: |
-          python evaluation/evaluate_agent.py \
-            --environment test \
-            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
-            --categories answerable,out_of_scope,adversarial \
-            --git-sha ${{ github.sha }} \
-            --git-branch main \
-            --output agent_eval_results.json
-
-      - name: Run native Snowflake agent evaluation on TEST
+      - name: Run native Snowflake agent evaluation on TEST (GPA framework)
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -46,34 +32,25 @@ jobs:
           python evaluation/audit_agent.py \
             --environment test \
             --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
-            --metrics answer_correctness,logical_consistency,safety \
+            --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch main \
             --timeout 600 \
-            --output agent_native_eval_results.json
+            --output agent_eval_results.json
 
-      - name: Check both evaluations passed
+      - name: Check evaluation passed
         run: |
           python -c "
           import json, sys
           with open('agent_eval_results.json') as f:
-              custom = json.load(f)
-          with open('agent_native_eval_results.json') as f:
-              native = json.load(f)
-          failed = False
-          if not custom.get('passed_threshold'):
-              s = custom['summary']
-              print(f'CUSTOM EVAL FAILED: Accuracy {s[\"accuracy_pct\"]}% below threshold {s[\"threshold_pct\"]}%')
-              failed = True
-          else:
-              print(f'Custom eval PASSED: {custom[\"summary\"][\"accuracy_pct\"]}%')
-          if not native.get('passed_threshold'):
-              print(f'NATIVE EVAL FAILED: Overall avg {native.get(\"overall_average\", 0)}')
-              failed = True
-          else:
-              print(f'Native eval PASSED: Overall avg {native.get(\"overall_average\", 0)}')
-          if failed:
+              results = json.load(f)
+          if not results.get('passed_threshold'):
+              avg = results.get('overall_average', 0)
+              print(f'NATIVE EVAL FAILED: Overall avg {avg}')
+              for metric, score in results.get('metric_averages', {}).items():
+                  print(f'  {metric}: {score:.3f}')
               sys.exit(1)
+          print(f'Native eval PASSED: Overall avg {results.get(\"overall_average\", 0):.3f}')
           "
 
       - name: Deploy agent to PROD
@@ -105,6 +82,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-prod-promotion-results
-          path: |
-            agent_eval_results.json
-            agent_native_eval_results.json
+          path: agent_eval_results.json

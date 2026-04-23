@@ -12,8 +12,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  evaluate-agent-custom:
-    name: "Evaluate: Custom Question Banks"
+  evaluate-agent:
+    name: "Native Snowflake Agent Evaluation"
     runs-on: ubuntu-latest
     environment: test
 
@@ -53,46 +53,7 @@ jobs:
           conn.close()
           "
 
-      - name: Run custom question bank evaluation
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        run: |
-          python evaluation/evaluate_agent.py \
-            --environment test \
-            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
-            --categories answerable,out_of_scope,adversarial \
-            --git-sha ${{ github.sha }} \
-            --git-branch ${{ github.head_ref }} \
-            --output agent_eval_results.json
-
-      - name: Upload custom eval results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: agent-custom-eval-results
-          path: agent_eval_results.json
-
-  audit-agent-native:
-    name: "Audit: Native Snowflake Evaluation"
-    needs: [evaluate-agent-custom]
-    runs-on: ubuntu-latest
-    environment: test
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install snowflake-connector-python pyyaml
-
-      - name: Run native Snowflake agent evaluation
+      - name: Run native Snowflake agent evaluation (GPA framework)
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -101,85 +62,64 @@ jobs:
           python evaluation/audit_agent.py \
             --environment test \
             --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
-            --metrics answer_correctness,logical_consistency,safety \
+            --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch ${{ github.head_ref }} \
             --timeout 600 \
-            --output agent_native_eval_results.json
+            --output agent_eval_results.json
 
-      - name: Upload native eval results
+      - name: Upload eval results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agent-native-eval-results
-          path: agent_native_eval_results.json
+          name: agent-eval-results
+          path: agent_eval_results.json
 
-      - name: Download custom eval results
-        if: always()
-        uses: actions/download-artifact@v4
-        with:
-          name: agent-custom-eval-results
-          path: .
-
-      - name: Comment PR with combined results
+      - name: Comment PR with results
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
 
-            let customResults, nativeResults;
+            let results;
             try {
-              customResults = JSON.parse(fs.readFileSync('agent_eval_results.json', 'utf8'));
+              results = JSON.parse(fs.readFileSync('agent_eval_results.json', 'utf8'));
             } catch (e) {
-              customResults = { summary: { accuracy_pct: 0, passed_threshold: false, total_questions: 0 } };
-            }
-            try {
-              nativeResults = JSON.parse(fs.readFileSync('agent_native_eval_results.json', 'utf8'));
-            } catch (e) {
-              nativeResults = { status: 'NOT_RUN', metric_averages: {} };
+              results = { status: 'NOT_RUN', metric_averages: {} };
             }
 
-            const s = customResults.summary;
-            const customStatus = s.passed_threshold ? '✅ PASSED' : '❌ FAILED';
-            const nativeStatus = nativeResults.passed_threshold ? '✅ PASSED' :
-                                 nativeResults.status === 'COMPLETED' ? '❌ FAILED' : '⚠️ ' + (nativeResults.status || 'NOT_RUN');
+            const status = results.passed_threshold ? '✅ PASSED' :
+                           results.status === 'COMPLETED' ? '❌ FAILED' : '⚠️ ' + (results.status || 'NOT_RUN');
 
             let metricTable = '';
-            const metrics = nativeResults.metric_averages || {};
+            const metrics = results.metric_averages || {};
             for (const [metric, score] of Object.entries(metrics)) {
-              metricTable += `| ${metric} | ${(score || 0).toFixed(3)} |\n`;
+              const icon = score >= 0.7 ? '✅' : score >= 0.5 ? '⚠️' : '❌';
+              metricTable += `| ${metric} | ${(score || 0).toFixed(3)} | ${icon} |\n`;
             }
 
-            const snowsightLink = nativeResults.snowsight_url
-              ? `\n[View in Snowsight AI Observability](${nativeResults.snowsight_url})\n`
+            const snowsightLink = results.snowsight_url
+              ? `\n[View in Snowsight AI Observability](${results.snowsight_url})\n`
               : '';
 
-            const body = `## Agent CI Results
+            const body = `## Agent CI Results — Native GPA Evaluation ${status}
 
-            ### 1. Custom Question Bank Evaluation ${customStatus}
-            | Metric | Value |
-            |--------|-------|
-            | **Accuracy** | ${s.accuracy_pct}% |
-            | **Threshold** | ${s.threshold_pct}% |
-            | **Passed** | ${s.passed_questions}/${s.total_questions} |
-            | **Context Relevance** | ${(s.avg_context_relevance || 0).toFixed(3)} |
-            | **Groundedness** | ${(s.avg_groundedness || 0).toFixed(3)} |
-            | **Answer Relevance** | ${(s.avg_answer_relevance || 0).toFixed(3)} |
+            Uses Snowflake's built-in \`EXECUTE_AI_EVALUATION\` with GPA framework metrics.
 
-            ### 2. Native Snowflake Agent Evaluation ${nativeStatus}
-            | Metric | Average Score |
-            |--------|---------------|
-            ${metricTable || '| _No metrics available_ | - |'}
+            | Metric | Average Score | Status |
+            |--------|---------------|--------|
+            ${metricTable || '| _No metrics available_ | - | - |'}
 
             | Summary | Value |
             |---------|-------|
-            | **Overall Average** | ${(nativeResults.overall_average || 0).toFixed(3)} |
-            | **Total Records** | ${nativeResults.total_records || 'N/A'} |
-            | **Low Scores (<0.5)** | ${nativeResults.low_score_count || 'N/A'} |
+            | **Overall Average** | ${(results.overall_average || 0).toFixed(3)} |
+            | **Threshold** | ${results.accuracy_threshold || 'N/A'}% |
+            | **Total Records** | ${results.total_records || 'N/A'} |
+            | **Low Scores (<0.5)** | ${results.low_score_count || 'N/A'} |
             ${snowsightLink}
 
-            > Commit: \`${s.git_commit_sha?.slice(0,7)}\` | Branch: \`${s.git_branch}\`
+            > Commit: \`${{ github.sha }}\` | Branch: \`${{ github.head_ref }}\`
             `;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
