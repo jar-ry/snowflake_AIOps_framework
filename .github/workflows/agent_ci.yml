@@ -1,0 +1,189 @@
+name: Agent CI - Evaluate on PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - 'question_banks/agent/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  evaluate-agent-custom:
+    name: "Evaluate: Custom Question Banks"
+    runs-on: ubuntu-latest
+    environment: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Deploy agent to TEST
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python -c "
+          import snowflake.connector, os
+          conn = snowflake.connector.connect(
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              warehouse='RETAIL_AI_EVAL_WH'
+          )
+          with open('agents/test/retail_agent.sql', 'r') as f:
+              sql = f.read()
+          for stmt in sql.split(';'):
+              stmt = stmt.strip()
+              if stmt:
+                  conn.cursor().execute(stmt)
+          print('Agent deployed to TEST')
+          conn.close()
+          "
+
+      - name: Run custom question bank evaluation
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/evaluate_agent.py \
+            --environment test \
+            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --categories answerable,out_of_scope,adversarial \
+            --git-sha ${{ github.sha }} \
+            --git-branch ${{ github.head_ref }} \
+            --output agent_eval_results.json
+
+      - name: Upload custom eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-custom-eval-results
+          path: agent_eval_results.json
+
+  audit-agent-native:
+    name: "Audit: Native Snowflake Evaluation"
+    needs: [evaluate-agent-custom]
+    runs-on: ubuntu-latest
+    environment: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run native Snowflake agent evaluation
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/audit_agent.py \
+            --environment test \
+            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --metrics answer_correctness,logical_consistency,safety \
+            --git-sha ${{ github.sha }} \
+            --git-branch ${{ github.head_ref }} \
+            --timeout 600 \
+            --output agent_native_eval_results.json
+
+      - name: Upload native eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-native-eval-results
+          path: agent_native_eval_results.json
+
+      - name: Download custom eval results
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-custom-eval-results
+          path: .
+
+      - name: Comment PR with combined results
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let customResults, nativeResults;
+            try {
+              customResults = JSON.parse(fs.readFileSync('agent_eval_results.json', 'utf8'));
+            } catch (e) {
+              customResults = { summary: { accuracy_pct: 0, passed_threshold: false, total_questions: 0 } };
+            }
+            try {
+              nativeResults = JSON.parse(fs.readFileSync('agent_native_eval_results.json', 'utf8'));
+            } catch (e) {
+              nativeResults = { status: 'NOT_RUN', metric_averages: {} };
+            }
+
+            const s = customResults.summary;
+            const customStatus = s.passed_threshold ? '✅ PASSED' : '❌ FAILED';
+            const nativeStatus = nativeResults.passed_threshold ? '✅ PASSED' :
+                                 nativeResults.status === 'COMPLETED' ? '❌ FAILED' : '⚠️ ' + (nativeResults.status || 'NOT_RUN');
+
+            let metricTable = '';
+            const metrics = nativeResults.metric_averages || {};
+            for (const [metric, score] of Object.entries(metrics)) {
+              metricTable += `| ${metric} | ${(score || 0).toFixed(3)} |\n`;
+            }
+
+            const snowsightLink = nativeResults.snowsight_url
+              ? `\n[View in Snowsight AI Observability](${nativeResults.snowsight_url})\n`
+              : '';
+
+            const body = `## Agent CI Results
+
+            ### 1. Custom Question Bank Evaluation ${customStatus}
+            | Metric | Value |
+            |--------|-------|
+            | **Accuracy** | ${s.accuracy_pct}% |
+            | **Threshold** | ${s.threshold_pct}% |
+            | **Passed** | ${s.passed_questions}/${s.total_questions} |
+            | **Context Relevance** | ${(s.avg_context_relevance || 0).toFixed(3)} |
+            | **Groundedness** | ${(s.avg_groundedness || 0).toFixed(3)} |
+            | **Answer Relevance** | ${(s.avg_answer_relevance || 0).toFixed(3)} |
+
+            ### 2. Native Snowflake Agent Evaluation ${nativeStatus}
+            | Metric | Average Score |
+            |--------|---------------|
+            ${metricTable || '| _No metrics available_ | - |'}
+
+            | Summary | Value |
+            |---------|-------|
+            | **Overall Average** | ${(nativeResults.overall_average || 0).toFixed(3)} |
+            | **Total Records** | ${nativeResults.total_records || 'N/A'} |
+            | **Low Scores (<0.5)** | ${nativeResults.low_score_count || 'N/A'} |
+            ${snowsightLink}
+
+            > Commit: \`${s.git_commit_sha?.slice(0,7)}\` | Branch: \`${s.git_branch}\`
+            `;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

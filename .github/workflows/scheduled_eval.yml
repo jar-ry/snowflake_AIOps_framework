@@ -1,0 +1,209 @@
+name: Weekly Scheduled Evaluation & Health Check
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # Every Monday at 03:00 UTC
+  workflow_dispatch:       # Allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  health-check:
+    name: "Health Check (PROD)"
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run PROD health check
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python monitoring/health_check.py \
+            --environment prod \
+            --output health_report.json
+
+      - name: Upload health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-health-report
+          path: health_report.json
+          retention-days: 90
+
+  evaluate-semantic-view:
+    name: "Weekly SV Evaluation (PROD)"
+    needs: [health-check]
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run SV best practices audit
+        run: |
+          python evaluation/audit_semantic_view.py \
+            --ddl-file semantic_views/prod/retail_analytics_sv.sql \
+            --output sv_audit_report.json || true
+
+      - name: Run SV question bank evaluation
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/evaluate_semantic_view.py \
+            --environment prod \
+            --semantic-view RETAIL_AI_PROD.SEMANTIC.RETAIL_ANALYTICS_SV \
+            --categories easy,hard,ambiguous \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --output sv_eval_results.json || true
+
+      - name: Upload SV results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-sv-eval-results
+          path: |
+            sv_eval_results.json
+            sv_audit_report.json
+          retention-days: 90
+
+  evaluate-agent:
+    name: "Weekly Agent Evaluation (PROD)"
+    needs: [health-check]
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run custom question bank evaluation
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/evaluate_agent.py \
+            --environment prod \
+            --agent-name RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT \
+            --categories answerable,out_of_scope,adversarial \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --output agent_eval_results.json || true
+
+      - name: Run native Snowflake agent evaluation
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/audit_agent.py \
+            --environment prod \
+            --agent-name RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT \
+            --metrics answer_correctness,logical_consistency,safety \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --timeout 600 \
+            --output agent_native_eval_results.json || true
+
+      - name: Upload agent results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-agent-eval-results
+          path: |
+            agent_eval_results.json
+            agent_native_eval_results.json
+          retention-days: 90
+
+  weekly-summary:
+    name: "Generate Weekly Summary"
+    needs: [health-check, evaluate-semantic-view, evaluate-agent]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: results
+
+      - name: Generate summary
+        run: |
+          python3 -c "
+          import json, os, glob
+
+          summary = {'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)', 'checks': {}}
+
+          for pattern in ['results/*/health_report.json', 'results/*/sv_eval_results.json',
+                          'results/*/agent_eval_results.json', 'results/*/agent_native_eval_results.json',
+                          'results/*/sv_audit_report.json']:
+              for f in glob.glob(pattern):
+                  name = os.path.basename(f).replace('.json', '')
+                  try:
+                      with open(f) as fh:
+                          data = json.load(fh)
+                      if 'summary' in data:
+                          summary['checks'][name] = {
+                              'accuracy_pct': data['summary'].get('accuracy_pct'),
+                              'passed': data['summary'].get('passed_threshold') or data.get('passed_threshold'),
+                          }
+                      elif 'overall_status' in data:
+                          summary['checks'][name] = {'status': data['overall_status']}
+                      elif 'passed_threshold' in data:
+                          summary['checks'][name] = {
+                              'passed': data['passed_threshold'],
+                              'overall_avg': data.get('overall_average'),
+                          }
+                      elif 'audit_passed' in data.get('summary', {}):
+                          summary['checks'][name] = {'audit_passed': data['summary']['audit_passed']}
+                  except Exception as e:
+                      summary['checks'][name] = {'error': str(e)}
+
+          with open('weekly_summary.json', 'w') as f:
+              json.dump(summary, f, indent=2)
+
+          print('=== WEEKLY SUMMARY ===')
+          print(json.dumps(summary, indent=2))
+          "
+
+      - name: Upload weekly summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-summary
+          path: weekly_summary.json
+          retention-days: 365

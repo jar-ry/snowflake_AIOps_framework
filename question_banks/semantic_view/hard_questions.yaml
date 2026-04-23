@@ -1,0 +1,191 @@
+questions:
+  - id: hard_001
+    question: "What is the return rate by product category?"
+    expected_sql: |
+      SELECT
+        p.CATEGORY,
+        COUNT(DISTINCT r.RETURN_ID) AS total_returns,
+        COUNT(DISTINCT oi.ORDER_ITEM_ID) AS total_items_sold,
+        ROUND(COUNT(DISTINCT r.RETURN_ID) * 100.0 / NULLIF(COUNT(DISTINCT oi.ORDER_ITEM_ID), 0), 2) AS return_rate_pct
+      FROM ORDER_ITEMS oi
+      JOIN PRODUCTS p ON oi.PRODUCT_ID = p.PRODUCT_ID
+      LEFT JOIN RETURNS r ON oi.ORDER_ITEM_ID = r.ORDER_ITEM_ID
+      GROUP BY p.CATEGORY
+      ORDER BY return_rate_pct DESC
+    category: hard
+    description: "Requires joining products, order items, and returns with ratio calculation"
+
+  - id: hard_002
+    question: "Who are the top 10 customers by total spend, and what is their loyalty tier?"
+    expected_sql: |
+      SELECT
+        c.FIRST_NAME || ' ' || c.LAST_NAME AS customer_name,
+        c.LOYALTY_TIER,
+        SUM(o.TOTAL_AMOUNT) AS total_spend,
+        COUNT(o.ORDER_ID) AS order_count
+      FROM CUSTOMERS c
+      JOIN ORDERS o ON c.CUSTOMER_ID = o.CUSTOMER_ID
+      GROUP BY c.CUSTOMER_ID, c.FIRST_NAME, c.LAST_NAME, c.LOYALTY_TIER
+      ORDER BY total_spend DESC
+      LIMIT 10
+    category: hard
+    description: "Join customers and orders with aggregation and sorting"
+
+  - id: hard_003
+    question: "What is the month-over-month revenue trend for 2025?"
+    expected_sql: |
+      SELECT
+        DATE_TRUNC('month', ORDER_DATE) AS order_month,
+        SUM(TOTAL_AMOUNT) AS monthly_revenue,
+        LAG(SUM(TOTAL_AMOUNT)) OVER (ORDER BY DATE_TRUNC('month', ORDER_DATE)) AS prev_month_revenue,
+        ROUND(
+          (SUM(TOTAL_AMOUNT) - LAG(SUM(TOTAL_AMOUNT)) OVER (ORDER BY DATE_TRUNC('month', ORDER_DATE)))
+          / NULLIF(LAG(SUM(TOTAL_AMOUNT)) OVER (ORDER BY DATE_TRUNC('month', ORDER_DATE)), 0) * 100
+        , 2) AS mom_growth_pct
+      FROM ORDERS
+      WHERE YEAR(ORDER_DATE) = 2025
+      GROUP BY DATE_TRUNC('month', ORDER_DATE)
+      ORDER BY order_month
+    category: hard
+    description: "Window function with LAG for month-over-month comparison"
+
+  - id: hard_004
+    question: "What is the average time between order and delivery for each shipping method?"
+    expected_sql: |
+      SELECT
+        SHIPPING_METHOD,
+        AVG(DATEDIFF('day', ORDER_DATE, DELIVERY_DATE)) AS avg_delivery_days,
+        MIN(DATEDIFF('day', ORDER_DATE, DELIVERY_DATE)) AS min_delivery_days,
+        MAX(DATEDIFF('day', ORDER_DATE, DELIVERY_DATE)) AS max_delivery_days
+      FROM ORDERS
+      WHERE DELIVERY_DATE IS NOT NULL AND ORDER_STATUS = 'Delivered'
+      GROUP BY SHIPPING_METHOD
+      ORDER BY avg_delivery_days
+    category: hard
+    description: "Date difference calculations with filtering"
+
+  - id: hard_005
+    question: "Which brands have the highest gross margin and which have the most returns?"
+    expected_sql: |
+      WITH brand_margins AS (
+        SELECT
+          p.BRAND,
+          AVG((p.UNIT_PRICE - p.COST_PRICE) / NULLIF(p.UNIT_PRICE, 0) * 100) AS avg_margin_pct
+        FROM PRODUCTS p
+        GROUP BY p.BRAND
+      ),
+      brand_returns AS (
+        SELECT
+          p.BRAND,
+          COUNT(r.RETURN_ID) AS return_count
+        FROM RETURNS r
+        JOIN ORDER_ITEMS oi ON r.ORDER_ITEM_ID = oi.ORDER_ITEM_ID
+        JOIN PRODUCTS p ON oi.PRODUCT_ID = p.PRODUCT_ID
+        GROUP BY p.BRAND
+      )
+      SELECT
+        bm.BRAND,
+        ROUND(bm.avg_margin_pct, 2) AS avg_margin_pct,
+        COALESCE(br.return_count, 0) AS return_count
+      FROM brand_margins bm
+      LEFT JOIN brand_returns br ON bm.BRAND = br.BRAND
+      ORDER BY avg_margin_pct DESC
+    category: hard
+    description: "Multiple CTEs joining products and returns with margin calculation"
+
+  - id: hard_006
+    question: "What is the customer retention rate - how many customers placed more than one order?"
+    expected_sql: |
+      SELECT
+        COUNT(CASE WHEN order_count > 1 THEN 1 END) AS repeat_customers,
+        COUNT(*) AS total_customers_with_orders,
+        ROUND(COUNT(CASE WHEN order_count > 1 THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS retention_rate_pct
+      FROM (
+        SELECT CUSTOMER_ID, COUNT(ORDER_ID) AS order_count
+        FROM ORDERS
+        GROUP BY CUSTOMER_ID
+      )
+    category: hard
+    description: "Subquery with conditional aggregation for retention analysis"
+
+  - id: hard_007
+    question: "What are the top 3 product categories by revenue for each customer segment?"
+    expected_sql: |
+      WITH segment_category_revenue AS (
+        SELECT
+          c.CUSTOMER_SEGMENT,
+          p.CATEGORY,
+          SUM(oi.LINE_TOTAL) AS total_revenue,
+          ROW_NUMBER() OVER (PARTITION BY c.CUSTOMER_SEGMENT ORDER BY SUM(oi.LINE_TOTAL) DESC) AS rn
+        FROM CUSTOMERS c
+        JOIN ORDERS o ON c.CUSTOMER_ID = o.CUSTOMER_ID
+        JOIN ORDER_ITEMS oi ON o.ORDER_ID = oi.ORDER_ID
+        JOIN PRODUCTS p ON oi.PRODUCT_ID = p.PRODUCT_ID
+        GROUP BY c.CUSTOMER_SEGMENT, p.CATEGORY
+      )
+      SELECT CUSTOMER_SEGMENT, CATEGORY, total_revenue
+      FROM segment_category_revenue
+      WHERE rn <= 3
+      ORDER BY CUSTOMER_SEGMENT, total_revenue DESC
+    category: hard
+    description: "Multi-table join with window function ROW_NUMBER for top-N per group"
+
+  - id: hard_008
+    question: "What is the cancellation rate by month and how does it compare to the overall average?"
+    expected_sql: |
+      WITH monthly_stats AS (
+        SELECT
+          DATE_TRUNC('month', ORDER_DATE) AS order_month,
+          COUNT(*) AS total_orders,
+          COUNT(CASE WHEN ORDER_STATUS = 'Cancelled' THEN 1 END) AS cancelled_orders,
+          ROUND(COUNT(CASE WHEN ORDER_STATUS = 'Cancelled' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS cancel_rate_pct
+        FROM ORDERS
+        GROUP BY DATE_TRUNC('month', ORDER_DATE)
+      ),
+      overall AS (
+        SELECT ROUND(COUNT(CASE WHEN ORDER_STATUS = 'Cancelled' THEN 1 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS overall_cancel_rate
+        FROM ORDERS
+      )
+      SELECT
+        ms.order_month,
+        ms.cancel_rate_pct,
+        o.overall_cancel_rate,
+        ms.cancel_rate_pct - o.overall_cancel_rate AS variance_from_avg
+      FROM monthly_stats ms
+      CROSS JOIN overall o
+      ORDER BY ms.order_month
+    category: hard
+    description: "CTE with CROSS JOIN comparison to overall metric"
+
+  - id: hard_009
+    question: "Which customers have a lifetime value above average but have never returned an item?"
+    expected_sql: |
+      SELECT
+        c.CUSTOMER_ID,
+        c.FIRST_NAME || ' ' || c.LAST_NAME AS customer_name,
+        c.LIFETIME_VALUE,
+        c.LOYALTY_TIER
+      FROM CUSTOMERS c
+      WHERE c.LIFETIME_VALUE > (SELECT AVG(LIFETIME_VALUE) FROM CUSTOMERS)
+        AND c.CUSTOMER_ID NOT IN (
+          SELECT DISTINCT o.CUSTOMER_ID
+          FROM RETURNS r
+          JOIN ORDERS o ON r.ORDER_ID = o.ORDER_ID
+        )
+      ORDER BY c.LIFETIME_VALUE DESC
+    category: hard
+    description: "Subquery with NOT IN for exclusion logic"
+
+  - id: hard_010
+    question: "What is the revenue contribution percentage of each product category?"
+    expected_sql: |
+      SELECT
+        p.CATEGORY,
+        SUM(oi.LINE_TOTAL) AS category_revenue,
+        ROUND(SUM(oi.LINE_TOTAL) * 100.0 / NULLIF(SUM(SUM(oi.LINE_TOTAL)) OVER (), 0), 2) AS revenue_pct
+      FROM ORDER_ITEMS oi
+      JOIN PRODUCTS p ON oi.PRODUCT_ID = p.PRODUCT_ID
+      GROUP BY p.CATEGORY
+      ORDER BY revenue_pct DESC
+    category: hard
+    description: "Window function SUM OVER() for percentage of total"

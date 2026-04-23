@@ -1,0 +1,90 @@
+questions:
+  - id: ambiguous_001
+    question: "Who are our best customers?"
+    evaluation_criteria: |
+      Should identify customers using some reasonable metric such as total spend,
+      order frequency, lifetime value, or a combination. Any reasonable interpretation
+      with clear criteria is acceptable.
+    category: ambiguous
+    description: "'Best' is subjective - could be by spend, frequency, or LTV"
+
+  - id: ambiguous_002
+    question: "Which products are underperforming?"
+    evaluation_criteria: |
+      Should identify products using some reasonable metric like low sales volume,
+      high return rates, low revenue, or poor margins. The approach should be
+      defensible and use actual data.
+    category: ambiguous
+    description: "'Underperforming' could mean low sales, high returns, or poor margins"
+
+  - id: ambiguous_003
+    question: "How is the business doing this year?"
+    evaluation_criteria: |
+      Should provide some high-level business metrics. Could include revenue trends,
+      order volume, customer growth, or return rates. Any reasonable summary of
+      business health is acceptable.
+    category: ambiguous
+    description: "Very broad - many valid interpretations of business health"
+
+  - id: ambiguous_004
+    question: "Are customers in the West happier than those in the East?"
+    evaluation_criteria: |
+      Without explicit satisfaction data, should use proxy metrics like return rates,
+      repeat purchase rates, or order values by region. Should acknowledge the
+      limitation that happiness cannot be directly measured from order data.
+    category: ambiguous
+    description: "No direct satisfaction metric available - requires proxy measures"
+
+  - id: ambiguous_005
+    question: "What products should we discontinue?"
+    evaluation_criteria: |
+      Should identify candidates using data-driven criteria such as low sales volume,
+      high return rates, negative margins, or declining trends. Should present data
+      rather than making a definitive recommendation.
+    category: ambiguous
+    description: "Requires combining multiple factors for a recommendation"
+
+  - id: ambiguous_006
+    question: "Is our pricing strategy working?"
+    evaluation_criteria: |
+      Should analyze pricing effectiveness through metrics like margin analysis,
+      discount impact on volume, price vs. sales correlation, or revenue trends.
+      Multiple valid approaches exist.
+    category: ambiguous
+    description: "Pricing effectiveness can be measured many ways"
+
+  - id: ambiguous_007
+    question: "Which customers are at risk of churning?"
+    evaluation_criteria: |
+      Should identify at-risk customers using behavioral signals like recency of
+      last order, declining order frequency, increasing return rates, or decreasing
+      order values. Any reasonable churn risk methodology is acceptable.
+    category: ambiguous
+    description: "No explicit churn flag - requires behavioral analysis"
+
+  - id: ambiguous_008
+    question: "How efficient are our operations?"
+    evaluation_criteria: |
+      Should measure operational efficiency using available data like shipping times,
+      return processing rates, order fulfillment rates, or cost metrics. Should
+      work within the constraints of available data.
+    category: ambiguous
+    description: "Efficiency is multi-dimensional and data-limited"
+
+  - id: ambiguous_009
+    question: "What trends should we be concerned about?"
+    evaluation_criteria: |
+      Should identify concerning trends using time-series analysis on key metrics
+      like declining revenue, increasing returns, customer concentration, or
+      category shifts. Should highlight negative trends with supporting data.
+    category: ambiguous
+    description: "Open-ended trend identification"
+
+  - id: ambiguous_010
+    question: "How do our different customer segments compare?"
+    evaluation_criteria: |
+      Should provide a multi-dimensional comparison of customer segments across
+      metrics like revenue, order frequency, average order value, return rates,
+      or lifetime value. Any reasonable comparison framework is acceptable.
+    category: ambiguous
+    description: "Segment comparison across multiple possible dimensions"

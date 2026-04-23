@@ -1,0 +1,89 @@
+questions:
+  - id: easy_001
+    question: "How many customers do we have?"
+    expected_sql: |
+      SELECT COUNT(*) AS total_customers
+      FROM CUSTOMERS
+    category: easy
+    description: "Simple count of all customers"
+
+  - id: easy_002
+    question: "What is our total revenue?"
+    expected_sql: |
+      SELECT SUM(TOTAL_AMOUNT) AS total_revenue
+      FROM ORDERS
+    category: easy
+    description: "Sum of all order amounts"
+
+  - id: easy_003
+    question: "How many orders were delivered?"
+    expected_sql: |
+      SELECT COUNT(*) AS delivered_orders
+      FROM ORDERS
+      WHERE ORDER_STATUS = 'Delivered'
+    category: easy
+    description: "Count orders with Delivered status"
+
+  - id: easy_004
+    question: "What are the top 5 products by unit price?"
+    expected_sql: |
+      SELECT PRODUCT_NAME, UNIT_PRICE
+      FROM PRODUCTS
+      ORDER BY UNIT_PRICE DESC
+      LIMIT 5
+    category: easy
+    description: "Top 5 most expensive products"
+
+  - id: easy_005
+    question: "How many returns do we have?"
+    expected_sql: |
+      SELECT COUNT(*) AS total_returns
+      FROM RETURNS
+    category: easy
+    description: "Total number of returns"
+
+  - id: easy_006
+    question: "What is the average order value?"
+    expected_sql: |
+      SELECT AVG(TOTAL_AMOUNT) AS avg_order_value
+      FROM ORDERS
+    category: easy
+    description: "Average of order total amounts"
+
+  - id: easy_007
+    question: "How many products are in each category?"
+    expected_sql: |
+      SELECT CATEGORY, COUNT(*) AS product_count
+      FROM PRODUCTS
+      GROUP BY CATEGORY
+      ORDER BY product_count DESC
+    category: easy
+    description: "Product count by category"
+
+  - id: easy_008
+    question: "What is the total refund amount?"
+    expected_sql: |
+      SELECT SUM(REFUND_AMOUNT) AS total_refunds
+      FROM RETURNS
+    category: easy
+    description: "Sum of all refund amounts"
+
+  - id: easy_009
+    question: "How many customers are in each loyalty tier?"
+    expected_sql: |
+      SELECT LOYALTY_TIER, COUNT(*) AS customer_count
+      FROM CUSTOMERS
+      GROUP BY LOYALTY_TIER
+      ORDER BY customer_count DESC
+    category: easy
+    description: "Customer count by loyalty tier"
+
+  - id: easy_010
+    question: "What are the different payment methods and how many orders use each?"
+    expected_sql: |
+      SELECT PAYMENT_METHOD, COUNT(*) AS order_count
+      FROM ORDERS
+      GROUP BY PAYMENT_METHOD
+      ORDER BY order_count DESC
+    category: easy
+    description: "Order count by payment method"

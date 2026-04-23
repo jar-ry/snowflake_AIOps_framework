@@ -1,0 +1,110 @@
+name: Agent CD - Promote to PROD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agents/**'
+
+jobs:
+  promote-agent-to-prod:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run custom question bank evaluation on TEST
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/evaluate_agent.py \
+            --environment test \
+            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --categories answerable,out_of_scope,adversarial \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --output agent_eval_results.json
+
+      - name: Run native Snowflake agent evaluation on TEST
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/audit_agent.py \
+            --environment test \
+            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --metrics answer_correctness,logical_consistency,safety \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --timeout 600 \
+            --output agent_native_eval_results.json
+
+      - name: Check both evaluations passed
+        run: |
+          python -c "
+          import json, sys
+          with open('agent_eval_results.json') as f:
+              custom = json.load(f)
+          with open('agent_native_eval_results.json') as f:
+              native = json.load(f)
+          failed = False
+          if not custom.get('passed_threshold'):
+              s = custom['summary']
+              print(f'CUSTOM EVAL FAILED: Accuracy {s[\"accuracy_pct\"]}% below threshold {s[\"threshold_pct\"]}%')
+              failed = True
+          else:
+              print(f'Custom eval PASSED: {custom[\"summary\"][\"accuracy_pct\"]}%')
+          if not native.get('passed_threshold'):
+              print(f'NATIVE EVAL FAILED: Overall avg {native.get(\"overall_average\", 0)}')
+              failed = True
+          else:
+              print(f'Native eval PASSED: Overall avg {native.get(\"overall_average\", 0)}')
+          if failed:
+              sys.exit(1)
+          "
+
+      - name: Deploy agent to PROD
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python -c "
+          import snowflake.connector, os
+          conn = snowflake.connector.connect(
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              warehouse='RETAIL_AI_EVAL_WH'
+          )
+          with open('agents/prod/retail_agent.sql', 'r') as f:
+              sql = f.read()
+          for stmt in sql.split(';'):
+              stmt = stmt.strip()
+              if stmt:
+                  conn.cursor().execute(stmt)
+          print('Agent deployed to PROD')
+          conn.close()
+          "
+
+      - name: Upload results artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-prod-promotion-results
+          path: |
+            agent_eval_results.json
+            agent_native_eval_results.json

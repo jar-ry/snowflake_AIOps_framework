@@ -1,0 +1,105 @@
+questions:
+  - id: agent_001
+    question: "What is our total revenue for 2025?"
+    should_answer: true
+    expected_answer_contains: ["revenue", "2025"]
+    category: data_query
+    description: "Standard data question the agent should answer via semantic view"
+
+  - id: agent_002
+    question: "Show me the top 5 customers by total spend"
+    should_answer: true
+    expected_answer_contains: ["customer", "spend"]
+    category: data_query
+    description: "Ranking question requiring order-customer join"
+
+  - id: agent_003
+    question: "What is the return rate by product category?"
+    should_answer: true
+    expected_answer_contains: ["return", "rate", "category"]
+    category: data_query
+    description: "Complex query requiring multi-table analysis"
+
+  - id: agent_004
+    question: "How are sales trending month over month?"
+    should_answer: true
+    expected_answer_contains: ["month", "trend"]
+    category: data_query
+    description: "Time series analysis question"
+
+  - id: agent_005
+    question: "Compare revenue across customer segments"
+    should_answer: true
+    expected_answer_contains: ["segment", "revenue"]
+    category: data_query
+    description: "Segment comparison requiring aggregation"
+
+  - id: agent_006
+    question: "Which shipping method has the fastest delivery time?"
+    should_answer: true
+    expected_answer_contains: ["shipping", "delivery"]
+    category: data_query
+    description: "Shipping performance analysis"
+
+  - id: agent_007
+    question: "What brands generate the most revenue?"
+    should_answer: true
+    expected_answer_contains: ["brand", "revenue"]
+    category: data_query
+    description: "Brand performance ranking"
+
+  - id: agent_008
+    question: "Show me a breakdown of orders by payment method"
+    should_answer: true
+    expected_answer_contains: ["payment", "orders"]
+    category: data_query
+    description: "Simple grouping and counting"
+
+  - id: agent_009
+    question: "What is the average lifetime value by loyalty tier?"
+    should_answer: true
+    expected_answer_contains: ["lifetime value", "loyalty"]
+    category: data_query
+    description: "Customer loyalty analysis"
+
+  - id: agent_010
+    question: "How many orders were cancelled vs delivered this quarter?"
+    should_answer: true
+    expected_answer_contains: ["cancelled", "delivered"]
+    category: data_query
+    description: "Order status comparison with time filter"
+
+  - id: agent_011
+    question: "What is the weather forecast for tomorrow?"
+    should_answer: false
+    expected_behavior: "Should decline - not related to retail data"
+    category: out_of_scope
+    description: "Completely unrelated question"
+
+  - id: agent_012
+    question: "Can you write me a Python script to process CSV files?"
+    should_answer: false
+    expected_behavior: "Should decline - not a data analysis question"
+    category: out_of_scope
+    description: "Code generation request outside agent scope"
+
+  - id: agent_013
+    question: "Tell me about the company's future strategy"
+    should_answer: false
+    expected_behavior: "Should decline - no strategy data available"
+    category: out_of_scope
+    description: "Question requiring information not in the data"
+
+  - id: agent_014
+    question: "What are our competitors' sales numbers?"
+    should_answer: false
+    expected_behavior: "Should decline - no competitor data available"
+    category: out_of_scope
+    description: "Question about external data not in the system"
+
+  - id: agent_015
+    question: "Can you update customer 123's email address?"
+    should_answer: false
+    expected_behavior: "Should decline - agent is read-only analytics"
+    category: out_of_scope
+    description: "Data modification request the agent should refuse"

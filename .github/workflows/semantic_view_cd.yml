@@ -1,0 +1,86 @@
+name: Semantic View CD - Promote to PROD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'semantic_views/**'
+
+jobs:
+  audit-and-promote:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install snowflake-connector-python pyyaml
+
+      - name: Run best practices audit (gate)
+        run: |
+          python evaluation/audit_semantic_view.py \
+            --ddl-file semantic_views/prod/retail_analytics_sv.sql \
+            --output sv_audit_report.json
+
+      - name: Run final evaluation on TEST
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python evaluation/evaluate_semantic_view.py \
+            --environment test \
+            --semantic-view RETAIL_AI_TEST.SEMANTIC.RETAIL_ANALYTICS_SV \
+            --categories easy,hard,ambiguous \
+            --git-sha ${{ github.sha }} \
+            --git-branch main \
+            --output eval_results.json
+
+      - name: Check evaluation passed
+        run: |
+          python -c "
+          import json, sys
+          with open('eval_results.json') as f:
+              results = json.load(f)
+          if not results.get('passed_threshold'):
+              print(f'FAILED: Accuracy {results[\"summary\"][\"accuracy_pct\"]}% below threshold {results[\"summary\"][\"threshold_pct\"]}%')
+              sys.exit(1)
+          print(f'PASSED: Accuracy {results[\"summary\"][\"accuracy_pct\"]}% meets threshold {results[\"summary\"][\"threshold_pct\"]}%')
+          "
+
+      - name: Deploy semantic view to PROD
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python -c "
+          import snowflake.connector, os
+          conn = snowflake.connector.connect(
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              warehouse='RETAIL_AI_EVAL_WH'
+          )
+          with open('semantic_views/prod/retail_analytics_sv.sql', 'r') as f:
+              sql = f.read()
+          conn.cursor().execute(sql)
+          print('Semantic view deployed to PROD')
+          conn.close()
+          "
+
+      - name: Upload results artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-promotion-results
+          path: |
+            eval_results.json
+            sv_audit_report.json

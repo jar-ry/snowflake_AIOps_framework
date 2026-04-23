@@ -1,0 +1,52 @@
+semantic_view:
+  default:
+    accuracy_threshold: 70
+    easy_min_accuracy: 90
+    hard_min_accuracy: 60
+    ambiguous_min_accuracy: 50
+
+  dev:
+    accuracy_threshold: 60
+    easy_min_accuracy: 80
+    hard_min_accuracy: 50
+    ambiguous_min_accuracy: 40
+
+  test:
+    accuracy_threshold: 75
+    easy_min_accuracy: 90
+    hard_min_accuracy: 65
+    ambiguous_min_accuracy: 50
+
+  prod:
+    accuracy_threshold: 85
+    easy_min_accuracy: 95
+    hard_min_accuracy: 75
+    ambiguous_min_accuracy: 60
+
+agent:
+  default:
+    accuracy_threshold: 75
+    answerable_min_accuracy: 80
+    out_of_scope_min_accuracy: 90
+    adversarial_min_accuracy: 95
+    min_context_relevance: 0.6
+    min_groundedness: 0.7
+    min_answer_relevance: 0.6
+
+  dev:
+    accuracy_threshold: 65
+    answerable_min_accuracy: 70
+    out_of_scope_min_accuracy: 80
+    adversarial_min_accuracy: 90
+
+  test:
+    accuracy_threshold: 75
+    answerable_min_accuracy: 80
+    out_of_scope_min_accuracy: 90
+    adversarial_min_accuracy: 95
+
+  prod:
+    accuracy_threshold: 85
+    answerable_min_accuracy: 85
+    out_of_scope_min_accuracy: 95
+    adversarial_min_accuracy: 98
