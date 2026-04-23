@@ -25,6 +25,7 @@ import json
 import re
 import sys
 import os
+import yaml
 
 sys.path.insert(0, os.path.dirname(__file__))
 from utils import get_connection, execute_sql
@@ -47,7 +48,7 @@ def parse_ddl(ddl_text: str) -> dict:
     if sv_match:
         model["semantic_view_name"] = sv_match.group(1)
 
-    table_blocks = re.split(r'\n\s*(?=\S+\.\S+\.\S+\.\S+)', ddl_text)
+    table_blocks = re.split(r'\n\s*(?=\S+\.\S+\.\S+\s+AS\s+\w+\s+PRIMARY)', ddl_text)
 
     table_pattern = re.compile(
         r'(\S+\.\S+\.\S+)\s+AS\s+(\w+)\s+PRIMARY\s+KEY\s*\((\w+)\)',
@@ -70,31 +71,35 @@ def parse_ddl(ddl_text: str) -> dict:
         col_pattern = re.compile(
             r'(\w+)\s+AS\s+"([^"]+)"\s+COMMENT\s+\'([^\']*)\''
         )
-        for col_match in col_pattern.finditer(block):
+        col_section = re.search(r'WITH\s+COLUMNS\s*\((.*?)\)\s*(?:WITH\s+METRICS|WITH\s+FILTERS|$)', block, re.DOTALL)
+        col_text = col_section.group(1) if col_section else block
+        for col_match in col_pattern.finditer(col_text):
             col = {
                 "physical_name": col_match.group(1),
                 "logical_name": col_match.group(2),
                 "comment": col_match.group(3),
             }
-            values_match = re.search(
-                rf'{re.escape(col_match.group(0))}.*?VALUES\s*\(([^)]+)\)',
-                block
-            )
+            after_comment = col_text[col_match.end():]
+            next_col = re.search(r'^\s*\w+\s+AS\s+"', after_comment, re.MULTILINE)
+            segment = after_comment[:next_col.start()] if next_col else after_comment[:200]
+            values_match = re.search(r"VALUES\s*\(([^)]+)\)", segment)
             if values_match:
                 col["sample_values"] = [
                     v.strip().strip("'") for v in values_match.group(1).split(",")
                 ]
             table["columns"].append(col)
 
-        metric_pattern = re.compile(
-            r'"([^"]+)"\s+AS\s+((?:COUNT|SUM|AVG|MIN|MAX)\([^)]+\))\s+COMMENT\s+\'([^\']*)\''
-        )
-        for m_match in metric_pattern.finditer(block):
-            table["metrics"].append({
-                "name": m_match.group(1),
-                "expression": m_match.group(2),
-                "comment": m_match.group(3),
-            })
+        metric_section = re.search(r'WITH\s+METRICS\s*\(([\s\S]*?)\)\s*(?=WITH\s+FILTERS|\s*,\s*\n|\s*\)\s*\n|\s*$)', block)
+        if metric_section:
+            metric_pattern = re.compile(
+                r'"([^"]+)"\s+AS\s+((?:COUNT|SUM|AVG|MIN|MAX)\(.*?\))\s+COMMENT\s+\'([^\']*)\''
+            , re.DOTALL)
+            for m_match in metric_pattern.finditer(metric_section.group(1)):
+                table["metrics"].append({
+                    "name": m_match.group(1),
+                    "expression": re.sub(r'\s+', ' ', m_match.group(2).strip()),
+                    "comment": m_match.group(3),
+                })
 
         filter_pattern = re.compile(
             r'"([^"]+)"\s+AS\s+(.+?)\s+COMMENT\s+\'([^\']*)\''
@@ -123,6 +128,75 @@ def parse_ddl(ddl_text: str) -> dict:
                 "from_column": rel_match.group(2),
                 "to_table": rel_match.group(3),
                 "to_column": rel_match.group(4),
+            })
+
+    return model
+
+
+def parse_yaml(yaml_text: str) -> dict:
+    spec = yaml.safe_load(yaml_text)
+    model = {
+        "semantic_view_name": spec.get("name", ""),
+        "tables": [],
+        "relationships": [],
+        "raw_yaml": yaml_text,
+    }
+
+    for tbl in spec.get("tables", []):
+        bt = tbl.get("base_table", {})
+        physical = f"{bt.get('database', '')}.{bt.get('schema', '')}.{bt.get('table', '')}"
+        pk_cols = tbl.get("primary_key", {}).get("columns", [])
+        table = {
+            "physical_table": physical,
+            "logical_name": tbl["name"],
+            "primary_key": pk_cols[0] if pk_cols else "",
+            "columns": [],
+            "metrics": [],
+            "filters": [],
+        }
+
+        for dim in tbl.get("dimensions", []) + tbl.get("time_dimensions", []):
+            col = {
+                "physical_name": dim.get("expr", dim["name"]),
+                "logical_name": dim["name"],
+                "comment": dim.get("description", ""),
+            }
+            if dim.get("sample_values"):
+                col["sample_values"] = dim["sample_values"]
+            table["columns"].append(col)
+
+        for fact in tbl.get("facts", []):
+            col = {
+                "physical_name": fact.get("expr", fact["name"]),
+                "logical_name": fact["name"],
+                "comment": fact.get("description", ""),
+            }
+            table["columns"].append(col)
+
+        for metric in tbl.get("metrics", []):
+            table["metrics"].append({
+                "name": metric["name"],
+                "expression": metric.get("expr", ""),
+                "comment": metric.get("description", ""),
+            })
+
+        for filt in tbl.get("filters", []):
+            table["filters"].append({
+                "name": filt["name"],
+                "expression": filt.get("expr", ""),
+                "comment": filt.get("description", ""),
+            })
+
+        model["tables"].append(table)
+
+    for rel in spec.get("relationships", []):
+        cols = rel.get("relationship_columns", [])
+        if cols:
+            model["relationships"].append({
+                "from_table": rel["left_table"],
+                "from_column": cols[0].get("left_column", ""),
+                "to_table": rel["right_table"],
+                "to_column": cols[0].get("right_column", ""),
             })
 
     return model
@@ -436,8 +510,11 @@ def main():
 
     if args.ddl_file:
         with open(args.ddl_file, "r") as f:
-            ddl_text = f.read()
-        model = parse_ddl(ddl_text)
+            file_text = f.read()
+        if args.ddl_file.endswith(".yaml") or args.ddl_file.endswith(".yml"):
+            model = parse_yaml(file_text)
+        else:
+            model = parse_ddl(file_text)
     else:
         conn = get_connection(args.environment)
         model = describe_semantic_view(conn, args.semantic_view)
