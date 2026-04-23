@@ -144,8 +144,9 @@ Run the setup scripts in order:
 ### 2. Deploy Semantic View (DEV)
 
 ```sql
--- Run in Snowsight or via CoCo
-@semantic_views/dev/retail_analytics_sv.sql
+-- Deploy via SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML
+-- Or use: CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_DEV.SEMANTIC', $$<yaml>$$)
+-- YAML file: semantic_views/dev/retail_analytics_sv.yaml
 ```
 
 ### 3. Deploy Cortex Agent (DEV)
@@ -160,7 +161,7 @@ Run the setup scripts in order:
 # --- Semantic View ---
 # Best practices audit (structural checks, no Snowflake connection needed)
 python evaluation/audit_semantic_view.py \
-  --ddl-file semantic_views/dev/retail_analytics_sv.sql \
+  --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
   --output sv_audit.json
 
 # Question bank evaluation (requires Snowflake connection)
@@ -212,10 +213,10 @@ ai_evaluation_framework/
 │   ├── 09_monitoring_views.sql         # Trend views for Snowsight dashboards
 │   ├── 10_monitoring_alerts.sql        # Snowflake Alerts (6 alert types)
 │   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
-├── semantic_views/                     # Semantic View DDL by environment
-│   ├── dev/retail_analytics_sv.sql
-│   ├── test/retail_analytics_sv.sql
-│   └── prod/retail_analytics_sv.sql
+├── semantic_views/                     # Semantic View YAML by environment
+│   ├── dev/retail_analytics_sv.yaml
+│   ├── test/retail_analytics_sv.yaml
+│   └── prod/retail_analytics_sv.yaml
 ├── agents/                             # Cortex Agent DDL by environment
 │   ├── dev/retail_agent.sql
 │   ├── test/retail_agent.sql

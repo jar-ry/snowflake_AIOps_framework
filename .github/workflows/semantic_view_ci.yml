@@ -36,7 +36,7 @@ jobs:
         run: |
           set +e
           python evaluation/audit_semantic_view.py \
-            --ddl-file semantic_views/test/retail_analytics_sv.sql \
+            --ddl-file semantic_views/test/retail_analytics_sv.yaml \
             --output sv_audit_report.json
           EXIT_CODE=$?
           echo "passed=$([ $EXIT_CODE -eq 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
@@ -81,10 +81,11 @@ jobs:
               password=os.environ['SNOWFLAKE_PASSWORD'],
               warehouse='RETAIL_AI_EVAL_WH'
           )
-          with open('semantic_views/test/retail_analytics_sv.sql', 'r') as f:
-              sql = f.read()
-          conn.cursor().execute(sql)
-          print('Semantic view deployed to TEST')
+          with open('semantic_views/test/retail_analytics_sv.yaml', 'r') as f:
+              yaml_content = f.read()
+          yaml_escaped = yaml_content.replace("'", "''")
+          conn.cursor().execute(f"CALL SYSTEM\$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_TEST.SEMANTIC', $${yaml_content}$$)")
+          print('Semantic view deployed to TEST via YAML')
           conn.close()
           "
 

@@ -65,7 +65,7 @@ jobs:
       - name: Run SV best practices audit
         run: |
           python evaluation/audit_semantic_view.py \
-            --ddl-file semantic_views/prod/retail_analytics_sv.sql \
+            --ddl-file semantic_views/prod/retail_analytics_sv.yaml \
             --output sv_audit_report.json || true
 
       - name: Run SV question bank evaluation

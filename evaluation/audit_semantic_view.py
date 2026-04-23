@@ -16,9 +16,9 @@ Can run in two modes:
   - Live mode (--live): introspects a deployed semantic view via DESCRIBE
 
 Usage:
-    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.sql
+    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.yaml
     python audit_semantic_view.py --live --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
-    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.sql --output audit_report.json
+    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.yaml --output audit_report.json
 """
 import argparse
 import json
