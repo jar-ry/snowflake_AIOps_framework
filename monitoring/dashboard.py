@@ -1,7 +1,7 @@
 import streamlit as st
 import altair as alt
 import pandas as pd
-from datetime import timedelta
+from snowflake.snowpark.context import get_active_session
 
 st.set_page_config(
     page_title="AI Monitoring Dashboard",
@@ -9,12 +9,12 @@ st.set_page_config(
     layout="wide",
 )
 
-conn = st.connection("snowflake")
+session = get_active_session()
 
 
-def run_query(sql, ttl_minutes=10):
+def run_query(sql):
     try:
-        return conn.query(sql, ttl=timedelta(minutes=ttl_minutes))
+        return session.sql(sql).to_pandas()
     except Exception as e:
         return pd.DataFrame()
 
