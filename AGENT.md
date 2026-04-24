@@ -32,8 +32,8 @@ The mock domain is **retail/e-commerce** with a database of customers, products,
 | Warehouse | `RETAIL_AI_EVAL_WH` (XSMALL) |
 | Semantic View | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_ANALYTICS_SV` |
 | Agent | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_AGENT` |
-| Agent LLM | `claude-3-5-sonnet` |
-| LLM judge model | `claude-4-opus` (configurable in `config/environments.yaml` → `llm.judge_model`) |
+| Agent LLM | `claude-opus-4-7` |
+| LLM judge model | `claude-opus-4-7` (configurable in `config/environments.yaml` → `llm.judge_model`) |
 
 ### RBAC Roles
 
@@ -168,7 +168,7 @@ conn = snowflake.connector.connect(
 - `SNOWFLAKE.LOCAL.GET_AI_RECORD_TRACE(db, schema, agent, 'CORTEX AGENT', record_id)` — drill into individual records
 - `SNOWFLAKE.LOCAL.GET_AI_OBSERVABILITY_LOGS(db, schema, agent, 'CORTEX AGENT')` — errors and warnings
 - `snowflake.local.ai_observability_events` — raw trace data
-- LLM judges auto-selected by Snowflake (`claude-4-sonnet` / `claude-3-5-sonnet`, cross-region inference)
+- LLM judges auto-selected by Snowflake (cross-region inference)
 
 ### Configuration Files
 - `config/environments.yaml` — per-env database, schema, warehouse, SV name, agent name, LLM model config (`llm.model`, `llm.judge_model`)

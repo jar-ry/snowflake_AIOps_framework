@@ -6,7 +6,7 @@
 
 CREATE OR REPLACE CORTEX AGENT RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
   COMMENT = 'Retail analytics agent for e-commerce data analysis'
-  LLM = 'claude-3-5-sonnet'
+  LLM = 'claude-opus-4-7'
   TOOLS = (
     'RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV'
   )

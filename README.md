@@ -283,7 +283,7 @@ Uses Snowflake's `EXECUTE_AI_EVALUATION` with the GPA (Goal-Plan-Action) framewo
 | `execution_efficiency` | Custom LLM-judged | Plan-Action | Optimal tool selection and execution path |
 
 Results are viewable in Snowsight's AI Observability dashboard.
-LLM judges are auto-selected by Snowflake (`claude-4-sonnet` / `claude-3-5-sonnet`).
+LLM judges are auto-selected by Snowflake.
 
 ### Layer 2: Question Bank Evaluation (Accuracy)
 

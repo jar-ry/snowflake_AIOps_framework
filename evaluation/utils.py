@@ -36,7 +36,7 @@ def load_thresholds() -> dict:
 def get_llm_model(role: str = "model") -> str:
     config = load_config()
     llm_config = config.get("llm", {})
-    return llm_config.get(role, llm_config.get("model", "claude-4-opus"))
+    return llm_config.get(role, llm_config.get("model", "claude-opus-4-7"))
 
 
 def load_question_bank(bank_type: str, difficulty: str) -> list:
