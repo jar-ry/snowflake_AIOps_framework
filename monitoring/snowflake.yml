@@ -1,0 +1,12 @@
+definition_version: 2
+entities:
+  ai_monitoring_dashboard:
+    type: streamlit
+    identifier:
+      name: AI_MONITORING_DASHBOARD
+      database: RETAIL_AI_EVAL
+      schema: MONITORING
+    query_warehouse: RETAIL_AI_EVAL_WH
+    main_file: dashboard.py
+    artifacts:
+      - dashboard.py

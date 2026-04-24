@@ -55,8 +55,10 @@ Feature branch → PR (CI: deploy to DEV + evaluate) → Merge to main → CD: p
 
 ```
 ai_evaluation_framework/
-├── setup/                                # Snowflake SQL setup (run in order)
-│   ├── 01_create_databases.sql           # DEV/TEST/PROD databases, eval results tables
+├── setup/                                # Snowflake setup (bootstrap.py runs all)
+│   ├── bootstrap.py                      # One-command full setup
+│   ├── deploy_dev.py                     # Deploy SV + agent to DEV only
+│   ├── 01_create_databases.sql           # DEV/PROD databases, eval results tables
 │   ├── 02_create_tables.sql              # CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES
 │   ├── 03_seed_data.sql                  # 500 customers, 100 products, 20 stores, 5000 orders
 │   ├── 04_rbac_setup.sql                 # Roles and grants
@@ -65,7 +67,7 @@ ai_evaluation_framework/
 │   ├── 07_monitoring_tables.sql          # Feedback, usage, health, alert tables + RBAC
 │   ├── 08_monitoring_tasks.sql           # 5 Snowflake Tasks + 2 stored procedures
 │   ├── 09_monitoring_views.sql           # 7 trend views for Snowsight dashboards
-│   ├── 10_monitoring_alerts.sql          # 6 Snowflake Alerts
+│   ├── 10_monitoring_alerts.sql          # 7 Snowflake Alerts
 │   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
 ├── semantic_views/{dev,prod}/          # CREATE SEMANTIC VIEW DDL per environment
 ├── agents/{dev,prod}/                  # CREATE CORTEX AGENT DDL per environment

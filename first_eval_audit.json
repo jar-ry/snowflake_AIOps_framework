@@ -1,0 +1,12 @@
+{
+  "summary": {
+    "total_findings": 0,
+    "by_severity": {},
+    "by_check": {},
+    "tables_audited": 6,
+    "relationships_audited": 5,
+    "has_blocking_issues": false,
+    "audit_passed": true
+  },
+  "findings": []
+}

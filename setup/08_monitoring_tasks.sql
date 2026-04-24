@@ -309,15 +309,10 @@ BEGIN
     LET details STRING := '';
 
     BEGIN
-        LET result VARIANT := (
-            SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                'agent',
-                OBJECT_CONSTRUCT(
-                    'agent_name', :agent_name,
-                    'messages', ARRAY_CONSTRUCT(
-                        OBJECT_CONSTRUCT('role', 'user', 'content', :test_query)
-                    )
-                )
+        LET result STRING := (
+            SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+                :agent_name,
+                '{"messages": [{"role": "user", "content": [{"type": "text", "text": "What is our total revenue this year?"}]}]}'
             )
         );
 

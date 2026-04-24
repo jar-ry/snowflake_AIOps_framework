@@ -98,17 +98,11 @@ def call_cortex_agent(
     agent_name: str,
     question: str
 ) -> dict:
-    sql = f"""
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        'agent',
-        OBJECT_CONSTRUCT(
-            'agent_name', '{agent_name}',
-            'messages', ARRAY_CONSTRUCT(
-                OBJECT_CONSTRUCT('role', 'user', 'content', '{question.replace("'", "''")}')
-            )
-        )
-    ) AS response
-    """
+    escaped = question.replace("\\", "\\\\").replace('"', '\\"')
+    request_body = json.dumps({
+        "messages": [{"role": "user", "content": [{"type": "text", "text": escaped}]}]
+    })
+    sql = f"SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN('{agent_name}', $${request_body}$$) AS response"
     cursor = conn.cursor()
     cursor.execute(sql)
     result = cursor.fetchone()

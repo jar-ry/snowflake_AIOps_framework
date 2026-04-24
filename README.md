@@ -105,73 +105,71 @@ Built for data teams who want to **self-serve semantic view development** while 
 
 ---
 
-## Quick Start
+## Getting Started
 
-### 1. Set Up Snowflake Environment
+### Prerequisites
 
-Run the setup scripts in order:
+- Python 3.11+
+- A Snowflake account with Cortex AI features enabled
+- A named connection in `~/.snowflake/connections.toml` (or env vars `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`)
 
-```bash
-# Using SnowSQL or Snowsight
--- Step 1: Create databases, schemas, and eval tables
-@setup/01_create_databases.sql
-
--- Step 2: Create tables in all environments
-@setup/02_create_tables.sql
-
--- Step 3: Seed mock retail data
-@setup/03_seed_data.sql
-
--- Step 4: Set up RBAC roles and grants
-@setup/04_rbac_setup.sql
-
--- Step 5: Configure observability (views over ai_observability_events)
-@setup/05_observability_setup.sql
-
--- Step 6: Create native evaluation datasets
-@setup/06_eval_dataset_setup.sql
-
--- Step 7-10: Set up monitoring (optional but recommended)
-@setup/07_monitoring_tables.sql
-@setup/08_monitoring_tasks.sql
-@setup/09_monitoring_views.sql
-@setup/10_monitoring_alerts.sql
-
--- Step 11: Set up interaction quality rules engine
-@setup/11_interaction_quality_engine.sql
-```
-
-### 2. Deploy Semantic View (DEV)
-
-```sql
--- Deploy via SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML
--- Or use: CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_DEV.SEMANTIC', $$<yaml>$$)
--- YAML file: semantic_views/dev/retail_analytics_sv.yaml
-```
-
-### 3. Deploy Cortex Agent (DEV)
-
-```sql
-@agents/dev/retail_agent.sql
-```
-
-### 4. Run Evaluations Locally
+### One-Command Setup
 
 ```bash
-# --- Semantic View ---
-# Best practices audit (structural checks, no Snowflake connection needed)
+pip install -r requirements.txt
+
+python setup/bootstrap.py
+```
+
+This single command will:
+
+1. Create databases (`RETAIL_AI_DEV`, `RETAIL_AI_PROD`, `RETAIL_AI_EVAL`)
+2. Create 6 retail tables and seed mock data (500 customers, 5K orders, 100 products, etc.)
+3. Set up RBAC roles (`ANALYST`, `REVIEWER`, `DEPLOYER`, `ADMIN`)
+4. Create observability views over `ai_observability_events`
+5. Create evaluation datasets (15 ground truth questions)
+6. Create monitoring tables, views, tasks (5 daily/weekly), and alerts (7)
+7. Deploy the semantic view to DEV
+8. Deploy the Cortex Agent to DEV
+9. Run a first SV audit evaluation
+
+After bootstrap completes, **one manual step** is required:
+
+> **Set the agent warehouse in Snowsight:**
+> Go to **AI & ML → Agents → RETAIL_AGENT → Edit → Tools → Cortex Analyst → Warehouse → `RETAIL_AI_EVAL_WH` → Save**
+>
+> This is a known Snowflake limitation — the warehouse cannot be set via `CREATE AGENT` SQL.
+
+### Monitoring Dashboard (Streamlit in Snowflake)
+
+The dashboard is deployed as a SiS app during bootstrap. Access it in Snowsight:
+
+**Projects → Streamlit → AI_MONITORING_DASHBOARD**
+
+Or deploy/redeploy manually:
+
+```bash
+cd monitoring
+snow streamlit deploy --replace
+```
+
+The dashboard shows evaluation trends, feedback, token costs, health status, and alerts across 6 tabs.
+
+### Run Evaluations Locally
+
+```bash
+# SV best practices audit (no Snowflake connection needed)
 python evaluation/audit_semantic_view.py \
   --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
   --output sv_audit.json
 
-# Question bank evaluation (requires Snowflake connection)
+# SV question bank evaluation (requires Snowflake connection)
 python evaluation/evaluate_semantic_view.py \
   --environment dev \
   --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV \
   --output sv_eval.json
 
-# --- Agent ---
-# Native Snowflake evaluation (GPA framework via EXECUTE_AI_EVALUATION)
+# Agent native GPA evaluation (requires Snowflake connection)
 python evaluation/audit_agent.py \
   --environment dev \
   --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
@@ -179,14 +177,28 @@ python evaluation/audit_agent.py \
   --output agent_eval.json
 ```
 
-### 5. Push to Git and Let CI/CD Handle the Rest
+### Set Up CI/CD
 
 ```bash
-git add -A
-git commit -m "Update semantic view with new metrics"
-git push origin feature/update-sv
-# Open PR → CI runs audit + evaluation → Results posted as PR comment
-# Merge → CD runs audit gate + final eval → Promote to PROD if passes
+# Push to GitHub
+git init && git add -A && git commit -m "Initial commit"
+gh repo create <repo-name> --private --source=. --push
+
+# Add secrets (Settings → Secrets → Actions)
+# SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
+```
+
+Then:
+- **Open a PR** touching `semantic_views/` or `agents/` → CI deploys to DEV, evaluates, posts results as PR comment
+- **Merge to main** → CD evaluates on DEV, then promotes to PROD if quality gates pass
+
+### Bootstrap Options
+
+```bash
+python setup/bootstrap.py                # Full setup
+python setup/bootstrap.py --skip-sql     # Skip SQL (if already run)
+python setup/bootstrap.py --skip-deploy  # Skip SV/agent deployment
+python setup/bootstrap.py --skip-eval    # Skip first evaluation
 ```
 
 ---
@@ -196,16 +208,18 @@ git push origin feature/update-sv
 ```
 ai_evaluation_framework/
 ├── setup/                              # Snowflake environment setup
-│   ├── 01_create_databases.sql         # DEV/TEST/PROD databases + eval tables
-│   ├── 02_create_tables.sql            # Retail schema (customers, orders, etc.)
-│   ├── 03_seed_data.sql                # 500 customers, 5000 orders, 100 products
-│   ├── 04_rbac_setup.sql               # Analyst/Reviewer/Deployer/Admin roles
-│   ├── 05_observability_setup.sql      # Views over ai_observability_events
-│   ├── 06_eval_dataset_setup.sql       # Native eval datasets (OBJECT ground truth)
-│   ├── 07_monitoring_tables.sql        # Feedback, usage, health, alert tables
-│   ├── 08_monitoring_tasks.sql         # Scheduled Tasks (daily + weekly)
-│   ├── 09_monitoring_views.sql         # Trend views for Snowsight dashboards
-│   ├── 10_monitoring_alerts.sql        # Snowflake Alerts (6 alert types)
+│   ├── bootstrap.py                   # One-command full setup script
+│   ├── deploy_dev.py                  # Deploy SV + agent to DEV only
+│   ├── 01_create_databases.sql        # DEV/PROD databases + eval tables
+│   ├── 02_create_tables.sql           # Retail schema (customers, orders, etc.)
+│   ├── 03_seed_data.sql               # 500 customers, 5000 orders, 100 products
+│   ├── 04_rbac_setup.sql              # Analyst/Reviewer/Deployer/Admin roles
+│   ├── 05_observability_setup.sql     # Views over ai_observability_events
+│   ├── 06_eval_dataset_setup.sql      # Native eval datasets (OBJECT ground truth)
+│   ├── 07_monitoring_tables.sql       # Feedback, usage, health, alert tables
+│   ├── 08_monitoring_tasks.sql        # Scheduled Tasks (daily + weekly)
+│   ├── 09_monitoring_views.sql        # Trend views for Snowsight dashboards
+│   ├── 10_monitoring_alerts.sql       # Snowflake Alerts (7 alert types)
 │   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
 ├── semantic_views/                     # Semantic View YAML by environment
 │   ├── dev/retail_analytics_sv.yaml
@@ -228,9 +242,10 @@ ai_evaluation_framework/
 │   ├── evaluate_semantic_view.py       # Batch SV evaluation (SQL comparison + LLM judge)
 │   ├── llm_judge.py                   # LLM-as-a-Judge for SV evaluation
 │   └── utils.py                       # Shared helpers (connection, SQL exec, etc.)
-├── monitoring/                         # Health check & monitoring scripts
-│   ├── health_check.py                # PROD health checks (7 checks)
-│   └── dashboard.py                   # Streamlit monitoring dashboard
+├── monitoring/                         # Health check & monitoring
+│   ├── dashboard.py                   # Streamlit in Snowflake (SiS) dashboard
+│   ├── snowflake.yml                  # SiS deployment config
+│   └── health_check.py               # PROD health checks (7 checks)
 ├── .github/workflows/                  # CI/CD pipelines
 │   ├── semantic_view_ci.yml            # On PR: audit → evaluate → comment
 │   ├── semantic_view_cd.yml            # On merge: audit gate → eval → promote
@@ -241,6 +256,7 @@ ai_evaluation_framework/
 │   ├── thresholds.yaml                # Accuracy thresholds per environment
 │   ├── agent_evaluation_config.yaml   # Reusable GPA eval YAML config (Snowflake spec)
 │   └── monitoring.yaml                # Alert thresholds & schedule config
+├── requirements.txt                   # Python dependencies
 ├── AGENT.md                           # CoCo agent instructions
 └── README.md                          # This file
 ```
@@ -695,14 +711,3 @@ Edit `config/monitoring.yaml` to adjust alert thresholds, schedules, and notific
 | `SNOWFLAKE_USER` | Service account username |
 | `SNOWFLAKE_PASSWORD` | Service account password |
 | `SNOWFLAKE_CONNECTION_NAME` | Named connection (optional) |
-
----
-
-## Prerequisites
-
-- Python 3.11+
-- `snowflake-connector-python`, `pyyaml`
-- GitHub repository with Actions enabled
-- Snowflake account with Cortex AI features enabled
-- `SNOWFLAKE.CORTEX_USER` database role granted to the deployer role
-- `EXECUTE TASK ON ACCOUNT` granted for native agent evaluations

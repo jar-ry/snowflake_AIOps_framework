@@ -44,10 +44,9 @@ jobs:
           )
           with open('agents/dev/retail_agent.sql', 'r') as f:
               sql = f.read()
-          for stmt in sql.split(';'):
-              stmt = stmt.strip()
-              if stmt:
-                  conn.cursor().execute(stmt)
+          lines = [l for l in sql.split('\n') if not l.strip().startswith('--')]
+          full_sql = '\n'.join(lines).strip().rstrip(';')
+          conn.cursor().execute(full_sql)
           print('Agent deployed to DEV')
           conn.close()
           "
