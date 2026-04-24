@@ -70,23 +70,23 @@ Built for data teams who want to **self-serve semantic view development** while 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                      SNOWFLAKE ENVIRONMENTS                         │
 │                                                                     │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐            │
-│  │  RETAIL_AI   │   │  RETAIL_AI   │   │  RETAIL_AI   │            │
-│  │    _DEV      │   │    _TEST     │   │    _PROD     │            │
-│  │              │   │              │   │              │            │
-│  │  ANALYTICS   │   │  ANALYTICS   │   │  ANALYTICS   │            │
-│  │  ├─ CUSTOMERS│   │  ├─ CUSTOMERS│   │  ├─ CUSTOMERS│            │
-│  │  ├─ ORDERS   │   │  ├─ ORDERS   │   │  ├─ ORDERS   │            │
-│  │  ├─ PRODUCTS │   │  ├─ PRODUCTS │   │  ├─ PRODUCTS │            │
-│  │  ├─ ORDER_.. │   │  ├─ ORDER_.. │   │  ├─ ORDER_.. │            │
-│  │  ├─ RETURNS  │   │  ├─ RETURNS  │   │  ├─ RETURNS  │            │
-│  │  └─ STORES   │   │  └─ STORES   │   │  └─ STORES   │            │
-│  │              │   │              │   │              │            │
-│  │  SEMANTIC    │   │  SEMANTIC    │   │  SEMANTIC    │            │
-│  │  ├─ SV (DDL) │   │  ├─ SV (DDL) │   │  ├─ SV (DDL) │            │
-│  │  ├─ AGENT    │   │  ├─ AGENT    │   │  ├─ AGENT    │            │
-│  │  └─ EVAL DS  │   │  └─ EVAL DS  │   │  └─ EVAL DS  │            │
-│  └──────────────┘   └──────────────┘   └──────────────┘            │
+│  ┌──────────────┐   ┌──────────────┐                        │
+│  │  RETAIL_AI   │   │  RETAIL_AI   │                        │
+│  │    _DEV      │   │    _PROD     │                        │
+│  │              │   │              │                        │
+│  │  ANALYTICS   │   │  ANALYTICS   │                        │
+│  │  ├─ CUSTOMERS│   │  ├─ CUSTOMERS│                        │
+│  │  ├─ ORDERS   │   │  ├─ ORDERS   │                        │
+│  │  ├─ PRODUCTS │   │  ├─ PRODUCTS │                        │
+│  │  ├─ ORDER_.. │   │  ├─ ORDER_.. │                        │
+│  │  ├─ RETURNS  │   │  ├─ RETURNS  │                        │
+│  │  └─ STORES   │   │  └─ STORES   │                        │
+│  │              │   │              │                        │
+│  │  SEMANTIC    │   │  SEMANTIC    │                        │
+│  │  ├─ SV (DDL) │   │  ├─ SV (DDL) │                        │
+│  │  ├─ AGENT    │   │  ├─ AGENT    │                        │
+│  │  └─ EVAL DS  │   │  └─ EVAL DS  │                        │
+│  └──────────────┘   └──────────────┘                        │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │  RETAIL_AI_EVAL (shared across envs)                         │   │
@@ -209,11 +209,9 @@ ai_evaluation_framework/
 │   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
 ├── semantic_views/                     # Semantic View YAML by environment
 │   ├── dev/retail_analytics_sv.yaml
-│   ├── test/retail_analytics_sv.yaml
 │   └── prod/retail_analytics_sv.yaml
 ├── agents/                             # Cortex Agent DDL by environment
 │   ├── dev/retail_agent.sql
-│   ├── test/retail_agent.sql
 │   └── prod/retail_agent.sql
 ├── question_banks/                     # Test question banks
 │   ├── semantic_view/
@@ -324,8 +322,8 @@ PR Opened
   │   └── audit_semantic_view.py --ddl-file (structural checks)
   │
   └── Job 2: Question Bank Evaluation
-      ├── Deploy SV to TEST
-      ├── evaluate_semantic_view.py --environment test
+      ├── Deploy SV to DEV
+      ├── evaluate_semantic_view.py --environment dev
       └── Post combined results as PR comment
            │
    Merge to main
@@ -358,11 +356,11 @@ PR Opened
 
 ### RBAC Roles
 
-| Role | DEV | TEST | PROD | EVAL |
-|------|-----|------|------|------|
-| `RETAIL_AI_ANALYST` | Full (create SV) | Read | Read | Read results |
-| `RETAIL_AI_REVIEWER` | Inherits Analyst | Read | Read | Read results |
-| `RETAIL_AI_DEPLOYER` | - | Deploy SV/Agent | Deploy SV/Agent | Write results |
+| Role | DEV | PROD | EVAL |
+|------|-----|------|------|
+| `RETAIL_AI_ANALYST` | Full (create SV) | Read | Read results |
+| `RETAIL_AI_REVIEWER` | Inherits Analyst | Read | Read results |
+| `RETAIL_AI_DEPLOYER` | Deploy SV/Agent | Deploy SV/Agent | Write results |
 | `RETAIL_AI_ADMIN` | Full | Full | Full | Full |
 
 ### Promotion Flow

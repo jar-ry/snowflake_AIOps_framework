@@ -1,6 +1,6 @@
 -- ============================================================================
 -- 02_create_tables.sql
--- Creates the retail analytics tables in all three environments
+-- Creates the retail analytics tables in DEV and PROD
 -- Run this after 01_create_databases.sql
 -- ============================================================================
 
@@ -93,5 +93,4 @@ END;
 $$;
 
 CALL RETAIL_AI_DEV.ANALYTICS.CREATE_RETAIL_TABLES('RETAIL_AI_DEV');
-CALL RETAIL_AI_DEV.ANALYTICS.CREATE_RETAIL_TABLES('RETAIL_AI_TEST');
 CALL RETAIL_AI_DEV.ANALYTICS.CREATE_RETAIL_TABLES('RETAIL_AI_PROD');

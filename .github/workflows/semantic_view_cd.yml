@@ -9,7 +9,6 @@ on:
 jobs:
   audit-and-promote:
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - name: Checkout code
@@ -26,18 +25,18 @@ jobs:
       - name: Run best practices audit (gate)
         run: |
           python evaluation/audit_semantic_view.py \
-            --ddl-file semantic_views/prod/retail_analytics_sv.yaml \
+            --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
             --output sv_audit_report.json
 
-      - name: Run final evaluation on TEST
+      - name: Run final evaluation on DEV
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         run: |
           python evaluation/evaluate_semantic_view.py \
-            --environment test \
-            --semantic-view RETAIL_AI_TEST.SEMANTIC.RETAIL_ANALYTICS_SV \
+            --environment dev \
+            --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV \
             --categories easy,hard,ambiguous \
             --git-sha ${{ github.sha }} \
             --git-branch main \
@@ -71,7 +70,7 @@ jobs:
           )
           with open('semantic_views/prod/retail_analytics_sv.yaml', 'r') as f:
               yaml_content = f.read()
-          conn.cursor().execute(f"CALL SYSTEM\$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_PROD.SEMANTIC', $${yaml_content}$$)")
+          conn.cursor().execute(f\"CALL SYSTEM\$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_PROD.SEMANTIC', \$\${yaml_content}\$\$)\")
           print('Semantic view deployed to PROD via YAML')
           conn.close()
           "

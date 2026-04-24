@@ -563,7 +563,7 @@
       <div class="flow-gap"></div>
       <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
         <div class="label">CI</div>
-        <div class="title">Deploy to TEST</div>
+        <div class="title">Deploy to DEV</div>
         <div class="desc">SYSTEM$CREATE_<br/>SEMANTIC_VIEW_FROM_YAML</div>
       </div>
       <div class="flow-gap"></div>
@@ -615,7 +615,7 @@
           <td><code>semantic_view_ci.yml</code></td>
           <td>PR to main (semantic_views/**)</td>
           <td><span class="tag tag-ci">CI</span></td>
-          <td>Audit YAML → Deploy to TEST → Evaluate 30 questions → PR comment</td>
+          <td>Audit YAML → Deploy to DEV → Evaluate 30 questions → PR comment</td>
         </tr>
         <tr>
           <td><code>semantic_view_cd.yml</code></td>
@@ -818,15 +818,7 @@
           <li>SEMANTIC.RETAIL_ANALYTICS_SV</li>
           <li>SEMANTIC.RETAIL_AGENT</li>
           <li>Full analyst write access</li>
-        </ul>
-      </div>
-      <div class="env-box test">
-        <h4 style="color:var(--orange);">RETAIL_AI_TEST</h4>
-        <ul>
-          <li>ANALYTICS schema (6 tables)</li>
-          <li>SEMANTIC.RETAIL_ANALYTICS_SV</li>
-          <li>SEMANTIC.RETAIL_AGENT</li>
-          <li>CI deploys here for eval</li>
+          <li>CI deploys and evaluates here</li>
         </ul>
       </div>
       <div class="env-box prod">

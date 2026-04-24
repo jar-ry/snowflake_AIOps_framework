@@ -371,7 +371,7 @@ def run_health_checks(environment: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Run health checks against PROD services")
-    parser.add_argument("--environment", "-e", default="prod", choices=["dev", "test", "prod"])
+    parser.add_argument("--environment", "-e", default="prod", choices=["dev", "prod"])
     parser.add_argument("--output", "-o", default="", help="Output JSON file path")
     args = parser.parse_args()
 

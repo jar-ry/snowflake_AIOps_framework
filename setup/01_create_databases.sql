@@ -1,20 +1,15 @@
 -- ============================================================================
 -- 01_create_databases.sql
--- Creates the three-environment structure: DEV, TEST, PROD
--- Each environment is a separate database with identical schemas
+-- Creates the two-tier environment structure: DEV + PROD
+-- DEV: development + CI evaluation | PROD: promoted on merge
 -- ============================================================================
 
 USE ROLE SYSADMIN;
 
--- Development environment - analysts work here
+-- Development environment - analysts work here, CI evaluations run here
 CREATE DATABASE IF NOT EXISTS RETAIL_AI_DEV;
 CREATE SCHEMA IF NOT EXISTS RETAIL_AI_DEV.ANALYTICS;
 CREATE SCHEMA IF NOT EXISTS RETAIL_AI_DEV.SEMANTIC;
-
--- Test environment - CI/CD evaluations run here
-CREATE DATABASE IF NOT EXISTS RETAIL_AI_TEST;
-CREATE SCHEMA IF NOT EXISTS RETAIL_AI_TEST.ANALYTICS;
-CREATE SCHEMA IF NOT EXISTS RETAIL_AI_TEST.SEMANTIC;
 
 -- Production environment - promoted after passing quality gates
 CREATE DATABASE IF NOT EXISTS RETAIL_AI_PROD;

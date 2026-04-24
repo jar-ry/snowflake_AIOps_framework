@@ -12,12 +12,22 @@ from datetime import datetime
 def get_connection(environment: str = "dev") -> snowflake.connector.SnowflakeConnection:
     config = load_config()
     env_config = config["environments"][environment]
-    conn = snowflake.connector.connect(
-        connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME") or env_config.get("connection_name", "default")
-    )
+
+    if os.getenv("SNOWFLAKE_ACCOUNT") and os.getenv("SNOWFLAKE_USER"):
+        conn = snowflake.connector.connect(
+            account=os.getenv("SNOWFLAKE_ACCOUNT"),
+            user=os.getenv("SNOWFLAKE_USER"),
+            password=os.getenv("SNOWFLAKE_PASSWORD"),
+            warehouse=env_config["warehouse"],
+        )
+    else:
+        conn = snowflake.connector.connect(
+            connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME") or env_config.get("connection_name", "default")
+        )
+        conn.cursor().execute(f"USE WAREHOUSE {env_config['warehouse']}")
+
     conn.cursor().execute(f"USE DATABASE {env_config['database']}")
     conn.cursor().execute(f"USE SCHEMA {env_config['schema']}")
-    conn.cursor().execute(f"USE WAREHOUSE {env_config['warehouse']}")
     return conn
 
 

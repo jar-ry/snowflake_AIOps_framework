@@ -3,9 +3,9 @@ evaluate_semantic_view.py
 Batch evaluation of a semantic view against question banks.
 
 Usage:
-    python evaluate_semantic_view.py --environment test --semantic-view RETAIL_AI_TEST.SEMANTIC.RETAIL_ANALYTICS_SV
+    python evaluate_semantic_view.py --environment dev --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
     python evaluate_semantic_view.py --environment dev --categories easy,hard
-    python evaluate_semantic_view.py --environment test --git-sha abc123 --git-branch feature/update-sv
+    python evaluate_semantic_view.py --environment dev --git-sha abc123 --git-branch feature/update-sv
 """
 import argparse
 import json
@@ -187,7 +187,7 @@ def run_evaluation(
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a semantic view against question banks")
-    parser.add_argument("--environment", "-e", default="test", choices=["dev", "test", "prod"])
+    parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
     parser.add_argument("--semantic-view", "-s", required=True, help="Fully qualified semantic view name")
     parser.add_argument("--categories", "-c", default="easy,hard,ambiguous", help="Comma-separated categories")
     parser.add_argument("--git-sha", default="", help="Git commit SHA for tracking")

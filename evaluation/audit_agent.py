@@ -11,9 +11,9 @@ This uses EXECUTE_AI_EVALUATION which produces results viewable in Snowsight's
 AI Observability dashboard.
 
 Usage:
-    python audit_agent.py --environment test --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT
-    python audit_agent.py --environment test --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT --metrics answer_correctness,logical_consistency
-    python audit_agent.py --environment test --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT --output audit_results.json
+    python audit_agent.py --environment dev --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
+    python audit_agent.py --environment dev --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT --metrics answer_correctness,logical_consistency
+    python audit_agent.py --environment dev --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT --output audit_results.json
 """
 import argparse
 import json
@@ -474,7 +474,7 @@ def run_agent_audit(
 
 def main():
     parser = argparse.ArgumentParser(description="Run native Snowflake agent evaluation")
-    parser.add_argument("--environment", "-e", default="test", choices=["dev", "test", "prod"])
+    parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
     parser.add_argument("--agent-name", "-a", required=True, help="Fully qualified agent name (DB.SCHEMA.AGENT)")
     parser.add_argument("--metrics", "-m", default="answer_correctness,logical_consistency,safety,groundedness,execution_efficiency",
                         help="Comma-separated metrics: answer_correctness, logical_consistency, safety, groundedness, execution_efficiency")

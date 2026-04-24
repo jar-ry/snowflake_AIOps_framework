@@ -501,7 +501,7 @@ def main():
     group.add_argument("--ddl-file", help="Path to semantic view DDL file")
     group.add_argument("--live", action="store_true", help="Introspect a deployed semantic view")
     parser.add_argument("--semantic-view", help="Fully qualified semantic view name (required with --live)")
-    parser.add_argument("--environment", "-e", default="dev", choices=["dev", "test", "prod"])
+    parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
     parser.add_argument("--output", "-o", default="", help="Output JSON file path")
     args = parser.parse_args()
 

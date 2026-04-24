@@ -15,7 +15,6 @@ jobs:
   evaluate-agent:
     name: "Native Snowflake Agent Evaluation"
     runs-on: ubuntu-latest
-    environment: test
 
     steps:
       - name: Checkout code
@@ -29,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: pip install snowflake-connector-python pyyaml
 
-      - name: Deploy agent to TEST
+      - name: Deploy agent to DEV
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -43,13 +42,13 @@ jobs:
               password=os.environ['SNOWFLAKE_PASSWORD'],
               warehouse='RETAIL_AI_EVAL_WH'
           )
-          with open('agents/test/retail_agent.sql', 'r') as f:
+          with open('agents/dev/retail_agent.sql', 'r') as f:
               sql = f.read()
           for stmt in sql.split(';'):
               stmt = stmt.strip()
               if stmt:
                   conn.cursor().execute(stmt)
-          print('Agent deployed to TEST')
+          print('Agent deployed to DEV')
           conn.close()
           "
 
@@ -60,8 +59,8 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         run: |
           python evaluation/audit_agent.py \
-            --environment test \
-            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --environment dev \
+            --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
             --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch ${{ github.head_ref }} \

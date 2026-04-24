@@ -8,15 +8,6 @@ environments:
     semantic_view: RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
     agent_name: RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
 
-  test:
-    database: RETAIL_AI_TEST
-    schema: ANALYTICS
-    semantic_schema: SEMANTIC
-    warehouse: RETAIL_AI_EVAL_WH
-    connection_name: default
-    semantic_view: RETAIL_AI_TEST.SEMANTIC.RETAIL_ANALYTICS_SV
-    agent_name: RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT
-
   prod:
     database: RETAIL_AI_PROD
     schema: ANALYTICS

@@ -23,7 +23,7 @@ with st.sidebar:
     st.title(":material/monitoring: AI Monitoring")
     env_filter = st.selectbox(
         "Environment",
-        ["All", "RETAIL_AI_PROD", "RETAIL_AI_TEST", "RETAIL_AI_DEV"],
+        ["All", "RETAIL_AI_PROD", "RETAIL_AI_DEV"],
         index=0,
     )
     days_back = st.slider("Days back", 7, 90, 30)

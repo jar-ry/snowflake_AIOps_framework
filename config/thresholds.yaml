@@ -11,12 +11,6 @@ semantic_view:
     hard_min_accuracy: 50
     ambiguous_min_accuracy: 40
 
-  test:
-    accuracy_threshold: 75
-    easy_min_accuracy: 90
-    hard_min_accuracy: 65
-    ambiguous_min_accuracy: 50
-
   prod:
     accuracy_threshold: 85
     easy_min_accuracy: 95
@@ -38,12 +32,6 @@ agent:
     answerable_min_accuracy: 70
     out_of_scope_min_accuracy: 80
     adversarial_min_accuracy: 90
-
-  test:
-    accuracy_threshold: 75
-    answerable_min_accuracy: 80
-    out_of_scope_min_accuracy: 90
-    adversarial_min_accuracy: 95
 
   prod:
     accuracy_threshold: 85

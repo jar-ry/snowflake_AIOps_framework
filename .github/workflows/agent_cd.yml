@@ -9,7 +9,6 @@ on:
 jobs:
   promote-agent-to-prod:
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - name: Checkout code
@@ -23,15 +22,15 @@ jobs:
       - name: Install dependencies
         run: pip install snowflake-connector-python pyyaml
 
-      - name: Run native Snowflake agent evaluation on TEST (GPA framework)
+      - name: Run native Snowflake agent evaluation on DEV (GPA framework)
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         run: |
           python evaluation/audit_agent.py \
-            --environment test \
-            --agent-name RETAIL_AI_TEST.SEMANTIC.RETAIL_AGENT \
+            --environment dev \
+            --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
             --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch main \

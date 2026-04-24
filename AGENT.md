@@ -22,7 +22,6 @@ The mock domain is **retail/e-commerce** with a database of customers, products,
 | Resource | Value |
 |----------|-------|
 | DEV database | `RETAIL_AI_DEV` |
-| TEST database | `RETAIL_AI_TEST` |
 | PROD database | `RETAIL_AI_PROD` |
 | Eval database | `RETAIL_AI_EVAL` |
 | Schemas per env | `ANALYTICS` (tables), `SEMANTIC` (SV, agents, eval datasets) |
@@ -41,10 +40,16 @@ The mock domain is **retail/e-commerce** with a database of customers, products,
 |------|---------|
 | `RETAIL_AI_ANALYST` | Create/edit SV in DEV, submit feedback, read results |
 | `RETAIL_AI_REVIEWER` | Inherits Analyst, read access across envs |
-| `RETAIL_AI_DEPLOYER` | Deploy SV/agents to TEST/PROD, write eval results, run tasks |
+| `RETAIL_AI_DEPLOYER` | Deploy SV/agents to DEV/PROD, write eval results, run tasks |
 | `RETAIL_AI_ADMIN` | Full access to everything |
 
 Hierarchy: ANALYST → REVIEWER → ADMIN, DEPLOYER → ADMIN → SYSADMIN
+
+## Promotion Path (2-tier)
+
+```
+Feature branch → PR (CI: deploy to DEV + evaluate) → Merge to main → CD: promote to PROD
+```
 
 ## Directory Structure
 
@@ -62,8 +67,8 @@ ai_evaluation_framework/
 │   ├── 09_monitoring_views.sql           # 7 trend views for Snowsight dashboards
 │   ├── 10_monitoring_alerts.sql          # 6 Snowflake Alerts
 │   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
-├── semantic_views/{dev,test,prod}/       # CREATE SEMANTIC VIEW DDL per environment
-├── agents/{dev,test,prod}/               # CREATE CORTEX AGENT DDL per environment
+├── semantic_views/{dev,prod}/          # CREATE SEMANTIC VIEW DDL per environment
+├── agents/{dev,prod}/                  # CREATE CORTEX AGENT DDL per environment
 ├── question_banks/
 │   ├── semantic_view/                    # easy, hard, ambiguous YAML question banks
 │   └── agent/                            # answerable, out_of_scope, adversarial YAML
@@ -146,10 +151,10 @@ Run with `streamlit run monitoring/dashboard.py`. Uses `st.connection("snowflake
 
 | Workflow | Trigger | What |
 |----------|---------|------|
-| `semantic_view_ci.yml` | PR on `semantic_views/` | Audit → eval → PR comment |
-| `semantic_view_cd.yml` | Merge to main | Audit gate → eval → deploy to PROD |
-| `agent_ci.yml` | PR on `agents/` | Deploy to TEST → native GPA eval → PR comment |
-| `agent_cd.yml` | Merge to main | Native GPA eval gate → deploy to PROD |
+| `semantic_view_ci.yml` | PR on `semantic_views/` | Audit → eval on DEV → PR comment |
+| `semantic_view_cd.yml` | Merge to main | Audit gate → eval on DEV → deploy to PROD |
+| `agent_ci.yml` | PR on `agents/` | Deploy to DEV → native GPA eval → PR comment |
+| `agent_cd.yml` | Merge to main | Native GPA eval on DEV → deploy to PROD |
 
 ### Connection Pattern
 
