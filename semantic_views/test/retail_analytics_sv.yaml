@@ -1,5 +1,5 @@
 name: RETAIL_ANALYTICS_SV
-description: Retail analytics semantic view for e-commerce data analysis
+description: Retail analytics semantic view for e-commerce data analysis with customer, product, order and store tables
 
 tables:
   - name: CUSTOMERS
