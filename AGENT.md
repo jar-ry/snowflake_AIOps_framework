@@ -79,9 +79,8 @@ ai_evaluation_framework/
 ├── .github/workflows/
 │   ├── semantic_view_ci.yml              # PR: audit → question bank eval → PR comment
 │   ├── semantic_view_cd.yml              # Merge: audit gate → final eval → deploy to PROD
-│   ├── agent_ci.yml                      # PR: custom eval → native eval → PR comment
-│   ├── agent_cd.yml                      # Merge: both evals → deploy to PROD
-│   └── scheduled_eval.yml               # Weekly cron: health + full eval suite + summary
+│   ├── agent_ci.yml                      # PR: deploy to TEST → native GPA eval → PR comment
+│   └── agent_cd.yml                      # Merge: native GPA eval gate → deploy to PROD
 ├── config/
 │   ├── environments.yaml                 # Database, schema, warehouse, SV, agent per env
 │   ├── thresholds.yaml                   # Accuracy thresholds: DEV 60% → TEST 75% → PROD 85%
@@ -151,7 +150,6 @@ Run with `streamlit run monitoring/dashboard.py`. Uses `st.connection("snowflake
 | `semantic_view_cd.yml` | Merge to main | Audit gate → eval → deploy to PROD |
 | `agent_ci.yml` | PR on `agents/` | Deploy to TEST → native GPA eval → PR comment |
 | `agent_cd.yml` | Merge to main | Native GPA eval gate → deploy to PROD |
-| `scheduled_eval.yml` | Manual (workflow_dispatch) | Health check → SV audit/eval → native agent eval → summary |
 
 ### Connection Pattern
 

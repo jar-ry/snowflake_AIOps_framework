@@ -237,8 +237,7 @@ ai_evaluation_framework/
 │   ├── semantic_view_ci.yml            # On PR: audit → evaluate → comment
 │   ├── semantic_view_cd.yml            # On merge: audit gate → eval → promote
 │   ├── agent_ci.yml                    # On PR: native GPA eval → comment
-│   ├── agent_cd.yml                   # On merge: native GPA eval gate → promote
-│   └── scheduled_eval.yml             # On-demand: health + SV eval + native agent eval
+│   └── agent_cd.yml                   # On merge: native GPA eval gate → promote
 ├── config/
 │   ├── environments.yaml              # Environment config + LLM model settings
 │   ├── thresholds.yaml                # Accuracy thresholds per environment
@@ -501,15 +500,15 @@ The framework includes a full monitoring layer for long-term tracking of agent h
 ┌──────────────────────────────────────────────────────────────────┐
 │                      MONITORING LAYER                             │
 │                                                                  │
-│  SNOWFLAKE TASKS (automated)               GITHUB ACTIONS        │
-│  ┌──────────────────────────┐              ┌────────────────────┐ │
-│  │ Daily 02:00 Usage agg   │              │ On-demand (manual) │ │
-│  │ Daily 02:15 Feedback    │              │ Full eval suite    │ │
-│  │ Daily 02:30 Interaction │              │ + health check     │ │
-│  │      quality scan       │              │ + summary artifact │ │
-│  │ Daily 06:00 Health check│              └────────────────────┘ │
-│  │ Weekly Sun  SV smoke    │                                     │
-│  │ Weekly Sun  Agent smoke │                                     │
+│  SNOWFLAKE TASKS (automated)                                    │
+│  ┌──────────────────────────┐                                    │
+│  │ Daily 02:00 Usage agg   │                                    │
+│  │ Daily 02:15 Feedback    │                                    │
+│  │ Daily 02:30 Interaction │                                    │
+│  │      quality scan       │                                    │
+│  │ Daily 06:00 Health check│                                    │
+│  │ Weekly Sun  SV smoke    │                                    │
+│  │ Weekly Sun  Agent smoke │                                    │
 │  └──────────────────────────┘                                    │
 │                │                                                 │
 │                ▼                                                 │
@@ -554,7 +553,6 @@ The framework includes a full monitoring layer for long-term tracking of agent h
 | Daily 06:00 UTC | Health checks (SV exists, agent responds, error rate, latency) | Snowflake Task |
 | Sunday 04:00 UTC | PROD semantic view smoke test | Snowflake Task |
 | Sunday 05:00 UTC | PROD agent smoke test | Snowflake Task |
-| Monday 03:00 UTC | Full evaluation suite (health + SV audit/eval + native agent GPA eval) | GitHub Actions (on-demand) |
 
 ### Alerts
 

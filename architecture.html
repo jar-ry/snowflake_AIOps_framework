@@ -275,6 +275,8 @@
   .sev-warning { color: var(--yellow); }
   .sev-medium { color: #FFE082; }
   .sev-info { color: var(--snow-blue); }
+  .blocks-yes { color: var(--red); font-weight: 700; text-transform: uppercase; }
+  .blocks-no { color: var(--green); font-weight: 500; }
 
   /* Code blocks */
   pre {
@@ -574,7 +576,7 @@
       <div class="flow-step" style="border-top: 2px solid var(--purple);">
         <div class="label">Merge → CD</div>
         <div class="title">Promote PROD</div>
-        <div class="desc">Audit + Eval gates</div>
+        <div class="desc"><strong style="color:var(--red)">Audit + Eval gates</strong></div>
       </div>
     </div>
 
@@ -588,26 +590,20 @@
       <div class="flow-gap"></div>
       <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
         <div class="label">PR Opened</div>
-        <div class="title">Custom Eval</div>
-        <div class="desc">GPA Framework + Safety</div>
-      </div>
-      <div class="flow-gap"></div>
-      <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
-        <div class="label">CI</div>
-        <div class="title">Native Eval</div>
+        <div class="title">Native GPA Eval</div>
         <div class="desc">EXECUTE_AI_EVALUATION</div>
       </div>
       <div class="flow-gap"></div>
       <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
         <div class="label">Report</div>
         <div class="title">PR Comment</div>
-        <div class="desc">Combined results</div>
+        <div class="desc">GPA metric results</div>
       </div>
       <div class="flow-gap"></div>
       <div class="flow-step" style="border-top: 2px solid var(--purple);">
         <div class="label">Merge → CD</div>
         <div class="title">Promote PROD</div>
-        <div class="desc">Dual eval gates</div>
+        <div class="desc"><strong style="color:var(--red)">Native GPA eval gate</strong></div>
       </div>
     </div>
 
@@ -639,12 +635,6 @@
           <td><span class="tag tag-cd">CD</span></td>
           <td>Native GPA eval gate → Deploy to PROD</td>
         </tr>
-        <tr>
-          <td><code>scheduled_eval.yml</code></td>
-          <td>Manual (workflow_dispatch)</td>
-          <td><span class="tag tag-cron">ON-DEMAND</span></td>
-          <td>Health check → SV audit/eval → Native agent GPA eval → Summary</td>
-        </tr>
       </tbody>
     </table>
   </div>
@@ -654,7 +644,7 @@
 <section id="audit">
   <div class="container">
     <h2><span class="num">03</span>Semantic View Audit Engine</h2>
-    <p class="dim">Static analysis of semantic view definitions — runs without a Snowflake connection. Parses both YAML and SQL DDL formats. Blocks deployment on CRITICAL or ERROR findings.</p>
+    <p class="dim">Static analysis of semantic view definitions — runs without a Snowflake connection. Parses both YAML and SQL DDL formats. <strong style="color:var(--red)">Blocks deployment on CRITICAL or ERROR findings.</strong></p>
 
     <div class="card-grid">
       <div class="card">
@@ -712,12 +702,12 @@
     <table>
       <thead><tr><th>Severity</th><th>Blocks Deployment?</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td><span class="sev-critical">CRITICAL</span></td><td>Yes</td><td>Conflicting definitions that will produce wrong results</td></tr>
-        <tr><td><span class="sev-error">ERROR</span></td><td>Yes</td><td>Missing essential structure (relationships, references)</td></tr>
-        <tr><td><span class="sev-high">HIGH</span></td><td>No</td><td>Duplicate definitions that degrade quality</td></tr>
-        <tr><td><span class="sev-warning">WARNING</span></td><td>No</td><td>Missing best practices (documentation, metadata)</td></tr>
-        <tr><td><span class="sev-medium">MEDIUM</span></td><td>No</td><td>Redundancies that reduce clarity</td></tr>
-        <tr><td><span class="sev-info">INFO</span></td><td>No</td><td>Suggestions for improvement</td></tr>
+        <tr><td><span class="sev-critical">CRITICAL</span></td><td><span class="blocks-yes">⛔ Yes — blocks deploy</span></td><td>Conflicting definitions that will produce wrong results</td></tr>
+        <tr><td><span class="sev-error">ERROR</span></td><td><span class="blocks-yes">⛔ Yes — blocks deploy</span></td><td>Missing essential structure (relationships, references)</td></tr>
+        <tr><td><span class="sev-high">HIGH</span></td><td><span class="blocks-no">No</span></td><td>Duplicate definitions that degrade quality</td></tr>
+        <tr><td><span class="sev-warning">WARNING</span></td><td><span class="blocks-no">No</span></td><td>Missing best practices (documentation, metadata)</td></tr>
+        <tr><td><span class="sev-medium">MEDIUM</span></td><td><span class="blocks-no">No</span></td><td>Redundancies that reduce clarity</td></tr>
+        <tr><td><span class="sev-info">INFO</span></td><td><span class="blocks-no">No</span></td><td>Suggestions for improvement</td></tr>
       </tbody>
     </table>
 
