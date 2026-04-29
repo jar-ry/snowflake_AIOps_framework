@@ -1,7 +1,10 @@
 -- ============================================================================
 -- 03_seed_data.sql
--- Seeds mock retail data into DEV, TEST, and PROD environments
+-- Seeds mock retail data into DEV environment
 -- Generates realistic data using Snowflake SQL generators
+-- NOTE: Each INSERT is idempotent — tables are truncated before seeding.
+--       Run each statement individually if your SQL client doesn't support
+--       multi-statement execution.
 -- ============================================================================
 
 USE ROLE SYSADMIN;
@@ -10,6 +13,7 @@ USE WAREHOUSE RETAIL_AI_EVAL_WH;
 -- ============================================================
 -- CUSTOMERS (500 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.CUSTOMERS;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.CUSTOMERS
 SELECT
     SEQ4()                                                          AS customer_id,
@@ -52,6 +56,7 @@ FROM TABLE(GENERATOR(ROWCOUNT => 500));
 -- ============================================================
 -- PRODUCTS (100 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.PRODUCTS;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.PRODUCTS
 SELECT
     SEQ4()                                                                  AS product_id,
@@ -87,6 +92,7 @@ FROM TABLE(GENERATOR(ROWCOUNT => 100));
 -- ============================================================
 -- STORES (20 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.STORES;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.STORES
 SELECT
     SEQ4()                                                  AS store_id,
@@ -120,6 +126,7 @@ FROM TABLE(GENERATOR(ROWCOUNT => 20));
 -- ============================================================
 -- ORDERS (5000 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.ORDERS;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.ORDERS
 SELECT
     SEQ4()                                                              AS order_id,
@@ -145,6 +152,7 @@ FROM TABLE(GENERATOR(ROWCOUNT => 5000));
 -- ============================================================
 -- ORDER_ITEMS (12000 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.ORDER_ITEMS;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.ORDER_ITEMS
 SELECT
     SEQ4()                                                      AS order_item_id,
@@ -159,6 +167,7 @@ FROM TABLE(GENERATOR(ROWCOUNT => 12000));
 -- ============================================================
 -- RETURNS (800 rows)
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_DEV.ANALYTICS.RETURNS;
 INSERT INTO RETAIL_AI_DEV.ANALYTICS.RETURNS
 SELECT
     SEQ4()                                                              AS return_id,
@@ -179,6 +188,12 @@ FROM TABLE(GENERATOR(ROWCOUNT => 800));
 -- ============================================================
 -- Copy data to PROD environment
 -- ============================================================
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.CUSTOMERS;
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.PRODUCTS;
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.STORES;
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.ORDERS;
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.ORDER_ITEMS;
+TRUNCATE TABLE IF EXISTS RETAIL_AI_PROD.ANALYTICS.RETURNS;
 INSERT INTO RETAIL_AI_PROD.ANALYTICS.CUSTOMERS   SELECT * FROM RETAIL_AI_DEV.ANALYTICS.CUSTOMERS;
 INSERT INTO RETAIL_AI_PROD.ANALYTICS.PRODUCTS    SELECT * FROM RETAIL_AI_DEV.ANALYTICS.PRODUCTS;
 INSERT INTO RETAIL_AI_PROD.ANALYTICS.STORES      SELECT * FROM RETAIL_AI_DEV.ANALYTICS.STORES;

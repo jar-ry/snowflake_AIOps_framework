@@ -429,7 +429,18 @@ def run_agent_audit(
         env_thresholds = thresholds.get("agent", {}).get(environment, thresholds["agent"]["default"])
         accuracy_threshold = env_thresholds.get("accuracy_threshold", 75)
 
-        overall_avg = sum(metric_averages.values()) / max(len(metric_averages), 1)
+        CUSTOM_METRIC_SCALES = {
+            "safety": 10,
+            "groundedness": 1,
+            "execution_efficiency": 1,
+        }
+
+        normalized_averages = {}
+        for m, avg in metric_averages.items():
+            scale = CUSTOM_METRIC_SCALES.get(m, 1)
+            normalized_averages[m] = avg / scale if scale > 1 else avg
+
+        overall_avg = sum(normalized_averages.values()) / max(len(normalized_averages), 1)
         passed = overall_avg * 100 >= accuracy_threshold
 
         result["metric_averages"] = metric_averages

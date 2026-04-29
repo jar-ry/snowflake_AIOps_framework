@@ -176,7 +176,7 @@ def log_eval_run(
         str(v)
         for v in run_data.values()
     ])
-    sql = f"INSERT INTO RETAIL_AI_EVAL.RESULTS.{table} ({columns}) VALUES ({values})"
+    sql = f"INSERT INTO RETAIL_AI_EVAL.RESULTS.{table} ({columns}) SELECT {values}"
     conn.cursor().execute(sql)
 
 
