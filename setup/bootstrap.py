@@ -9,12 +9,13 @@ runs a first evaluation, and prints next steps.
 Usage:
     python setup/bootstrap.py
     SNOWFLAKE_CONNECTION_NAME=myconn python setup/bootstrap.py
-    SNOWFLAKE_ACCOUNT=xxx SNOWFLAKE_USER=yyy SNOWFLAKE_PASSWORD=zzz python setup/bootstrap.py
+    SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/keys/rsa_key.p8 SNOWFLAKE_ACCOUNT=xxx SNOWFLAKE_USER=yyy python setup/bootstrap.py
 
 Prerequisites:
     pip install -r requirements.txt
+    Python 3.11 or 3.12 recommended (3.14 has known connector compatibility issues)
     A Snowflake connection configured in ~/.snowflake/connections.toml
-    OR SNOWFLAKE_ACCOUNT/USER/PASSWORD environment variables set
+    OR SNOWFLAKE_ACCOUNT/USER + SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY_PATH
 """
 import os
 import re
@@ -31,14 +32,52 @@ import snowflake.connector
 
 def get_connection():
     if os.getenv("SNOWFLAKE_ACCOUNT") and os.getenv("SNOWFLAKE_USER"):
-        return snowflake.connector.connect(
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            user=os.getenv("SNOWFLAKE_USER"),
-            password=os.getenv("SNOWFLAKE_PASSWORD"),
-        )
-    return snowflake.connector.connect(
-        connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"
-    )
+        kwargs = {
+            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
+            "user": os.getenv("SNOWFLAKE_USER"),
+        }
+        if os.getenv("SNOWFLAKE_PASSWORD"):
+            kwargs["password"] = os.getenv("SNOWFLAKE_PASSWORD")
+        if os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH"):
+            from cryptography.hazmat.primitives import serialization
+            key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+            passphrase = os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE")
+            with open(key_path, "rb") as f:
+                pk = serialization.load_pem_private_key(
+                    f.read(),
+                    password=passphrase.encode() if passphrase else None,
+                )
+            kwargs["private_key"] = pk.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        return snowflake.connector.connect(**kwargs)
+
+    conn_name = os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"
+    try:
+        import tomllib
+    except ImportError:
+        import tomli as tomllib
+    toml_path = os.path.expanduser("~/.snowflake/connections.toml")
+    if os.path.exists(toml_path):
+        with open(toml_path, "rb") as f:
+            config = tomllib.load(f)
+        conn_config = config.get(conn_name, {})
+        if conn_config.get("private_key_path"):
+            from cryptography.hazmat.primitives import serialization
+            key_path = os.path.expanduser(conn_config["private_key_path"])
+            with open(key_path, "rb") as f:
+                pk = serialization.load_pem_private_key(f.read(), password=None)
+            return snowflake.connector.connect(
+                connection_name=conn_name,
+                private_key=pk.private_bytes(
+                    encoding=serialization.Encoding.DER,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption(),
+                ),
+            )
+    return snowflake.connector.connect(connection_name=conn_name)
 
 
 def run_sql_file(conn, filepath, description):

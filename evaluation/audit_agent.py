@@ -180,24 +180,37 @@ def generate_eval_config(
     dataset_name: str,
     metrics: list,
     run_name: str,
+    table_name: str = None,
 ) -> dict:
-    config = {
-        "evaluation": {
-            "agent_params": {
-                "agent_name": agent_fqn,
-                "agent_type": "CORTEX AGENT",
+    config = {}
+
+    if table_name:
+        config["dataset"] = {
+            "dataset_type": "CORTEX AGENT",
+            "table_name": table_name,
+            "dataset_name": dataset_name,
+            "column_mapping": {
+                "query_text": "INPUT_QUERY",
+                "ground_truth": "GROUND_TRUTH",
             },
-            "run_params": {
-                "label": f"CI/CD evaluation: {run_name}",
-                "description": f"Automated evaluation run triggered by CI/CD pipeline",
-            },
-            "source_metadata": {
-                "type": "dataset",
-                "dataset_name": dataset_name,
-            },
+        }
+
+    config["evaluation"] = {
+        "agent_params": {
+            "agent_name": agent_fqn,
+            "agent_type": "CORTEX AGENT",
         },
-        "metrics": [],
+        "run_params": {
+            "label": f"CI/CD evaluation: {run_name}",
+            "description": f"Automated evaluation run triggered by CI/CD pipeline",
+        },
+        "source_metadata": {
+            "type": "dataset",
+            "dataset_name": dataset_name,
+        },
     }
+
+    config["metrics"] = []
 
     for metric in metrics:
         if metric in ("answer_correctness", "logical_consistency"):
@@ -366,22 +379,19 @@ def run_agent_audit(
     print(f"\nStep 1: Preparing evaluation table...")
     table_name = ensure_eval_table(conn, database, schema, agent_name_short)
 
-    print(f"\nStep 2: Creating evaluation dataset...")
-    dataset_name = f"{database}.{schema}.{agent_name_short}_EVALSET"
-    create_eval_dataset(conn, table_name, dataset_name)
+    print(f"\nStep 2: Generating evaluation config (with inline dataset block)...")
+    dataset_name = f"{agent_name_short}_EVALSET_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    eval_config = generate_eval_config(agent_fqn, dataset_name, metrics, run_name, table_name=table_name)
 
-    print(f"\nStep 3: Generating evaluation config (no dataset block — reuse existing)...")
-    eval_config = generate_eval_config(agent_fqn, dataset_name, metrics, run_name)
-
-    print(f"\nStep 4: Uploading config to stage...")
+    print(f"\nStep 3: Uploading config to stage...")
     local_dir = os.path.join(os.path.dirname(__file__), "..", ".eval_tmp")
     os.makedirs(local_dir, exist_ok=True)
     upload_config_to_stage(conn, eval_config, stage_name, config_filename, local_dir)
 
-    print(f"\nStep 5: Starting evaluation...")
+    print(f"\nStep 4: Starting evaluation...")
     start_evaluation(conn, run_name, stage_name, config_filename)
 
-    print(f"\nStep 6: Waiting for completion (timeout: {timeout}s)...")
+    print(f"\nStep 5: Waiting for completion (timeout: {timeout}s)...")
     print(f"  (View progress in Snowsight: AI & ML > Agents > {agent_name_short} > Evaluations)")
     status = check_evaluation_status(conn, run_name, stage_name, config_filename, timeout)
 
@@ -398,7 +408,7 @@ def run_agent_audit(
     }
 
     if final_status in ("COMPLETED", "PARTIALLY_COMPLETED"):
-        print(f"\nStep 7: Retrieving results...")
+        print(f"\nStep 6: Retrieving results...")
         eval_results = get_evaluation_results(conn, database, schema, agent_name_short, run_name)
         low_scores = get_low_score_details(conn, database, schema, agent_name_short, run_name)
 
@@ -419,7 +429,18 @@ def run_agent_audit(
         env_thresholds = thresholds.get("agent", {}).get(environment, thresholds["agent"]["default"])
         accuracy_threshold = env_thresholds.get("accuracy_threshold", 75)
 
-        overall_avg = sum(metric_averages.values()) / max(len(metric_averages), 1)
+        CUSTOM_METRIC_SCALES = {
+            "safety": 10,
+            "groundedness": 1,
+            "execution_efficiency": 1,
+        }
+
+        normalized_averages = {}
+        for m, avg in metric_averages.items():
+            scale = CUSTOM_METRIC_SCALES.get(m, 1)
+            normalized_averages[m] = avg / scale if scale > 1 else avg
+
+        overall_avg = sum(normalized_averages.values()) / max(len(normalized_averages), 1)
         passed = overall_avg * 100 >= accuracy_threshold
 
         result["metric_averages"] = metric_averages

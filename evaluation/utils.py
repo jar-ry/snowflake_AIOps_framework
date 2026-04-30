@@ -9,6 +9,31 @@ import snowflake.connector
 from datetime import datetime
 
 
+def _load_private_key(key_path: str) -> bytes:
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.backends import default_backend
+    with open(os.path.expanduser(key_path), "rb") as f:
+        p_key = serialization.load_pem_private_key(f.read(), password=None, backend=default_backend())
+    return p_key.private_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+
+def _resolve_connection_params(connection_name: str) -> dict:
+    try:
+        import tomli
+    except ImportError:
+        import tomllib as tomli
+    toml_path = os.path.expanduser("~/.snowflake/connections.toml")
+    if not os.path.exists(toml_path):
+        return {}
+    with open(toml_path, "rb") as f:
+        config = tomli.load(f)
+    return config.get(connection_name, {})
+
+
 def get_connection(environment: str = "dev") -> snowflake.connector.SnowflakeConnection:
     config = load_config()
     env_config = config["environments"][environment]
@@ -21,13 +46,23 @@ def get_connection(environment: str = "dev") -> snowflake.connector.SnowflakeCon
             warehouse=env_config["warehouse"],
         )
     else:
-        conn = snowflake.connector.connect(
-            connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME") or env_config.get("connection_name", "default")
-        )
-        conn.cursor().execute(f"USE WAREHOUSE {env_config['warehouse']}")
+        conn_name = os.getenv("SNOWFLAKE_CONNECTION_NAME") or env_config.get("connection_name", "default")
+        params = _resolve_connection_params(conn_name)
+        key_path = params.get("private_key_path") or params.get("private_key_file")
+        if key_path and params.get("authenticator") in ("snowflake_jwt", "SNOWFLAKE_JWT"):
+            conn = snowflake.connector.connect(
+                account=params["account"],
+                user=params["user"],
+                private_key=_load_private_key(key_path),
+                role=params.get("role"),
+                warehouse=env_config["warehouse"],
+            )
+        else:
+            conn = snowflake.connector.connect(connection_name=conn_name)
+            conn.cursor().execute(f"USE WAREHOUSE {env_config['warehouse']}")
 
     conn.cursor().execute(f"USE DATABASE {env_config['database']}")
-    conn.cursor().execute(f"USE SCHEMA {env_config['schema']}")
+    conn.cursor().execute(f"USE SCHEMA {env_config.get('semantic_schema', env_config['schema'])}")
     return conn
 
 
@@ -70,26 +105,35 @@ def execute_sql(conn: snowflake.connector.SnowflakeConnection, sql: str) -> list
 
 
 def call_cortex_analyst(conn: snowflake.connector.SnowflakeConnection, semantic_view: str, question: str) -> dict:
-    sql = f"""
-    SELECT SNOWFLAKE.CORTEX.COMPLETE(
-        'analyst',
-        OBJECT_CONSTRUCT(
-            'messages', ARRAY_CONSTRUCT(
-                OBJECT_CONSTRUCT('role', 'user', 'content', ARRAY_CONSTRUCT(
-                    OBJECT_CONSTRUCT('type', 'text', 'text', '{question.replace("'", "''")}')
-                ))
-            ),
-            'semantic_model', OBJECT_CONSTRUCT(
-                'semantic_view', '{semantic_view}'
-            )
-        )
-    ) AS response
-    """
-    cursor = conn.cursor()
-    cursor.execute(sql)
-    result = cursor.fetchone()
-    if result:
-        return json.loads(result[0]) if isinstance(result[0], str) else result[0]
+    config = load_config()
+    env_key = None
+    for env, ecfg in config.get("environments", {}).items():
+        if ecfg.get("semantic_view") == semantic_view:
+            env_key = env
+            break
+    agent_name = config["environments"].get(env_key or "dev", {}).get("agent_name")
+    if agent_name:
+        agent_resp = call_cortex_agent(conn, agent_name, question)
+        content = agent_resp.get("content", [])
+        sql_stmt = ""
+        text_resp = ""
+        for item in content:
+            if item.get("type") == "tool_result":
+                tool_content = item.get("tool_result", {}).get("content", [])
+                for tc in tool_content:
+                    if isinstance(tc, dict) and tc.get("type") == "json":
+                        sql_stmt = tc.get("json", {}).get("sql", "")
+                        text_resp = tc.get("json", {}).get("text", "")
+            elif item.get("type") == "text":
+                text_resp = text_resp or item.get("text", "")
+        return {
+            "choices": [{
+                "messages": [
+                    {"type": "sql", "statement": sql_stmt},
+                    {"type": "text", "text": text_resp},
+                ]
+            }]
+        }
     return {}
 
 
@@ -132,7 +176,7 @@ def log_eval_run(
         str(v)
         for v in run_data.values()
     ])
-    sql = f"INSERT INTO RETAIL_AI_EVAL.RESULTS.{table} ({columns}) VALUES ({values})"
+    sql = f"INSERT INTO RETAIL_AI_EVAL.RESULTS.{table} ({columns}) SELECT {values}"
     conn.cursor().execute(sql)
 
 
