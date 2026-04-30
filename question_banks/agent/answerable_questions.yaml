@@ -63,7 +63,7 @@ questions:
     description: "Customer loyalty analysis"
 
   - id: agent_010
-    question: "How many orders were cancelled vs delivered this quarter?"
+    question: "How many orders were cancelled vs delivered in Q4 2025?"
     should_answer: true
     expected_answer_contains: ["cancelled", "delivered"]
     category: data_query

@@ -86,11 +86,11 @@ ai_evaluation_framework/
 ├── .github/workflows/
 │   ├── semantic_view_ci.yml              # PR: audit → question bank eval → PR comment
 │   ├── semantic_view_cd.yml              # Merge: audit gate → final eval → deploy to PROD
-│   ├── agent_ci.yml                      # PR: deploy to TEST → native GPA eval → PR comment
+│   ├── agent_ci.yml                      # PR: deploy to DEV → native GPA eval → PR comment
 │   └── agent_cd.yml                      # Merge: native GPA eval gate → deploy to PROD
 ├── config/
 │   ├── environments.yaml                 # Database, schema, warehouse, SV, agent per env
-│   ├── thresholds.yaml                   # Accuracy thresholds: DEV 60% → TEST 75% → PROD 85%
+│   ├── thresholds.yaml                   # Accuracy thresholds: DEV 60% → PROD 85%
 │   └── monitoring.yaml                   # Alert thresholds, schedules, token cost estimates
 ├── AGENT.md                              # This file
 └── README.md                             # Full documentation
@@ -180,7 +180,7 @@ conn = snowflake.connector.connect(
 ### Configuration Files
 - `config/environments.yaml` — per-env database, schema, warehouse, SV name, agent name, LLM model config (`llm.model`, `llm.judge_model`)
 - `config/agent_evaluation_config.yaml` — reusable YAML config following Snowflake's Agent Evaluation YAML spec
-- `config/thresholds.yaml` — graduated accuracy thresholds (DEV 60% → TEST 75% → PROD 85%)
+- `config/thresholds.yaml` — graduated accuracy thresholds (DEV 60% → PROD 85%)
 - `config/monitoring.yaml` — alert thresholds, schedules, token cost estimates, notification settings
 
 ## GitHub Actions Secrets Required
