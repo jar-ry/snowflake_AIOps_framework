@@ -256,6 +256,10 @@ ai_evaluation_framework/
 │   ├── thresholds.yaml                # Accuracy thresholds per environment
 │   ├── agent_evaluation_config.yaml   # Reusable GPA eval YAML config (Snowflake spec)
 │   └── monitoring.yaml                # Alert thresholds & schedule config
+├── demo/                              # Demo materials
+│   ├── demo_runbook.md                # Step-by-step demo script
+│   ├── snowsight_walkthrough.md       # Snowsight UI walkthrough
+│   └── market_positioning.md          # Market positioning & differentiation
 ├── requirements.txt                   # Python dependencies
 ├── AGENT.md                           # CoCo agent instructions
 └── README.md                          # This file
@@ -491,14 +495,14 @@ VALUES ('My new question?', PARSE_JSON('{\"ground_truth_output\": \"Expected ans
 
 ### Adding New Semantic Views
 
-1. Create DDL files in `semantic_views/{dev,test,prod}/`
+1. Create DDL files in `semantic_views/{dev,prod}/`
 2. Add corresponding question banks
 3. Update `config/environments.yaml`
 4. CI/CD will automatically pick up changes
 
 ### Adding New Agents
 
-1. Create agent SQL in `agents/{dev,test,prod}/`
+1. Create agent SQL in `agents/{dev,prod}/`
 2. Add question banks in `question_banks/agent/`
 3. Update `config/environments.yaml`
 
@@ -672,10 +676,13 @@ ORDER BY max_same_tool_calls DESC;
 
 ### Streamlit Monitoring Dashboard
 
-A unified Streamlit dashboard for all monitoring and alerting:
+A unified Streamlit in Snowflake (SiS) dashboard for all monitoring and alerting.
 
+Access in Snowsight: **Projects → Streamlit → AI_MONITORING_DASHBOARD**
+
+Deploy/redeploy:
 ```bash
-streamlit run monitoring/dashboard.py
+cd monitoring && snow streamlit deploy --replace
 ```
 
 **Tabs:**

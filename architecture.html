@@ -982,8 +982,8 @@
       </tbody>
     </table>
 
-    <h3>Streamlit Dashboard</h3>
-    <p class="dim">A unified 6-tab monitoring dashboard at <code>monitoring/dashboard.py</code>:</p>
+    <h3>Streamlit Dashboard (SiS)</h3>
+    <p class="dim">A unified 6-tab monitoring dashboard deployed as <strong>Streamlit in Snowflake</strong> at <code>RETAIL_AI_EVAL.MONITORING.AI_MONITORING_DASHBOARD</code>. Uses <code>get_active_session()</code> for native Snowpark connectivity. Deploy with <code>cd monitoring && snow streamlit deploy --replace</code>.</p>
     <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
       <div class="card" style="text-align:center; padding:16px;">
         <h4 style="justify-content:center;">Overview</h4>
@@ -1133,12 +1133,14 @@
     <table>
       <thead><tr><th>File</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code>01_create_databases.sql</code></td><td>DEV/TEST/PROD databases, eval results tables</td></tr>
+        <tr><td><code>bootstrap.py</code></td><td><strong>One-command setup</strong> — runs all SQL, deploys DEV SV/agent, runs first eval, deploys SiS dashboard</td></tr>
+        <tr><td><code>deploy_dev.py</code></td><td>Deploy SV + agent to DEV only (used by bootstrap and CI)</td></tr>
+        <tr><td><code>01_create_databases.sql</code></td><td>DEV/PROD databases, eval results tables, warehouse</td></tr>
         <tr><td><code>02_create_tables.sql</code></td><td>CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES</td></tr>
         <tr><td><code>03_seed_data.sql</code></td><td>500 customers, 100 products, 20 stores, 5,000 orders</td></tr>
         <tr><td><code>04_rbac_setup.sql</code></td><td>Analyst/Reviewer/Deployer/Admin roles + grants</td></tr>
         <tr><td><code>05_observability_setup.sql</code></td><td>Views over snowflake.local.ai_observability_events</td></tr>
-        <tr><td><code>06_eval_dataset_setup.sql</code></td><td>OBJECT-typed ground truth datasets for native eval</td></tr>
+        <tr><td><code>06_eval_dataset_setup.sql</code></td><td>Ground truth datasets for EXECUTE_AI_EVALUATION</td></tr>
         <tr><td><code>07_monitoring_tables.sql</code></td><td>Feedback, usage, health, alert, quality tables</td></tr>
         <tr><td><code>08_monitoring_tasks.sql</code></td><td>5 Snowflake Tasks + 2 stored procedures</td></tr>
         <tr><td><code>09_monitoring_views.sql</code></td><td>8 trend views for Snowsight dashboards</td></tr>
@@ -1163,8 +1165,8 @@
     <table>
       <thead><tr><th>Path</th><th>Format</th><th>Deployed Via</th></tr></thead>
       <tbody>
-        <tr><td><code>semantic_views/{dev,test,prod}/retail_analytics_sv.yaml</code></td><td>YAML</td><td>SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML</td></tr>
-        <tr><td><code>agents/{dev,test,prod}/retail_agent.sql</code></td><td>SQL DDL</td><td>Direct SQL execution</td></tr>
+        <tr><td><code>semantic_views/{dev,prod}/retail_analytics_sv.yaml</code></td><td>YAML</td><td>SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML</td></tr>
+        <tr><td><code>agents/{dev,prod}/retail_agent.sql</code></td><td>YAML spec in SQL</td><td>CREATE AGENT FROM SPECIFICATION $$...$$</td></tr>
       </tbody>
     </table>
 
@@ -1185,10 +1187,21 @@
     <table>
       <thead><tr><th>File</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code>config/environments.yaml</code></td><td>Environment-specific Snowflake configuration (databases, warehouses)</td></tr>
-        <tr><td><code>config/thresholds.yaml</code></td><td>Accuracy thresholds per environment per evaluation type</td></tr>
+        <tr><td><code>config/environments.yaml</code></td><td>Environment-specific Snowflake configuration (databases, warehouses, LLM model)</td></tr>
+        <tr><td><code>config/thresholds.yaml</code></td><td>Accuracy thresholds per environment (DEV 60% → PROD 85%)</td></tr>
         <tr><td><code>config/monitoring.yaml</code></td><td>Alert thresholds, schedules, health check params, notification config</td></tr>
         <tr><td><code>config/agent_evaluation_config.yaml</code></td><td>EXECUTE_AI_EVALUATION YAML spec — GPA metrics + custom metrics</td></tr>
+        <tr><td><code>monitoring/snowflake.yml</code></td><td>SiS deployment manifest for the monitoring dashboard</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Demo &amp; Documentation</h3>
+    <table>
+      <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>demo/demo_runbook.md</code></td><td>Step-by-step demo script with talking points</td></tr>
+        <tr><td><code>demo/snowsight_walkthrough.md</code></td><td>Snowsight UI walkthrough for agent + observability</td></tr>
+        <tr><td><code>demo/market_positioning.md</code></td><td>Market positioning and differentiation vs alternatives</td></tr>
       </tbody>
     </table>
   </div>
