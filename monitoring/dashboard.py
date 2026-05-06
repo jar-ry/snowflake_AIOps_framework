@@ -107,8 +107,7 @@ with tab_overview:
             )
         with col2:
             st.markdown("**Cost trend**")
-            st.bar_chart(weekly_sorted, x="WEEK_START", y="TOTAL_COST_USD",
-                         y_label="Cost (USD)")
+            st.bar_chart(weekly_sorted, x="WEEK_START", y="TOTAL_COST_USD")
     else:
         st.info("No executive summary data available yet.")
 
@@ -130,7 +129,7 @@ with tab_overview:
             st.metric("Degraded", int(h_counts.get("DEGRADED", 0)))
         with c3:
             st.metric("Unhealthy", int(h_counts.get("UNHEALTHY", 0)))
-        st.dataframe(health, hide_index=True)
+        st.dataframe(health)
     else:
         st.info("No health check results yet. Run the health check script first.")
 
@@ -173,7 +172,7 @@ with tab_evals:
         st.altair_chart(chart + threshold, use_container_width=True)
 
         st.markdown("**Evaluation history**")
-        st.dataframe(evals, hide_index=True)
+        st.dataframe(evals)
     else:
         st.info("No evaluation data available yet.")
 
@@ -260,7 +259,7 @@ with tab_quality:
         LIMIT 100
     """)
     if not flags.empty:
-        st.dataframe(flags, hide_index=True)
+        st.dataframe(flags)
     else:
         st.success("No flagged interactions in this period.")
 
@@ -435,7 +434,7 @@ with tab_alerts:
         LIMIT 200
     """)
     if not alert_history.empty:
-        st.dataframe(alert_history, hide_index=True)
+        st.dataframe(alert_history)
     else:
         st.caption("No alerts in this period.")
 
