@@ -81,8 +81,9 @@ ai_evaluation_framework/
 │   ├── llm_judge.py                      # LLM-as-a-Judge for SV ambiguous evaluation
 │   └── utils.py                          # Shared: connection, SQL exec, analyst/agent calls
 ├── monitoring/
-│   ├── health_check.py                   # 7 PROD health checks (runnable locally or in CI)
-│   └── dashboard.py                      # Streamlit monitoring dashboard (all tabs)
+│   ├── health_check.py                   # 7 DEV/PROD health checks (runnable locally or in CI)
+│   ├── dashboard.py                      # Streamlit in Snowflake (SiS) monitoring dashboard
+│   └── snowflake.yml                     # SiS deployment config
 ├── .github/workflows/
 │   ├── semantic_view_ci.yml              # PR: audit → question bank eval → PR comment
 │   ├── semantic_view_cd.yml              # Merge: audit gate → final eval → deploy to PROD
@@ -92,6 +93,10 @@ ai_evaluation_framework/
 │   ├── environments.yaml                 # Database, schema, warehouse, SV, agent per env
 │   ├── thresholds.yaml                   # Accuracy thresholds: DEV 60% → PROD 85%
 │   └── monitoring.yaml                   # Alert thresholds, schedules, token cost estimates
+├── demo/
+│   ├── demo_runbook.md                   # Step-by-step demo script
+│   ├── snowsight_walkthrough.md          # Snowsight UI walkthrough
+│   └── market_positioning.md             # Market positioning & differentiation
 ├── AGENT.md                              # This file
 └── README.md                             # Full documentation
 ```
@@ -145,8 +150,10 @@ Deterministic rules over `ai_observability_events` that detect: tool looping, ex
 **Monitoring Views (for Snowsight dashboards):**
 `V_EVAL_ACCURACY_TREND`, `V_FEEDBACK_TREND`, `V_TOKEN_COST_TREND`, `V_AGENT_USAGE_PATTERNS`, `V_HEALTH_DASHBOARD`, `V_ACTIVE_ALERTS`, `V_WEEKLY_EXECUTIVE_SUMMARY`, `V_INTERACTION_QUALITY_FLAGS`, `V_INTERACTION_QUALITY_DASHBOARD`, `V_REQUEST_QUALITY_SIGNALS`, `V_THREAD_QUALITY_SIGNALS`
 
-**Streamlit Dashboard** (`monitoring/dashboard.py`):
-Run with `streamlit run monitoring/dashboard.py`. Uses `st.connection("snowflake")` with `.streamlit/secrets.toml`.
+**Streamlit Dashboard** (Streamlit in Snowflake):
+Deployed as SiS app at `RETAIL_AI_EVAL.MONITORING.AI_MONITORING_DASHBOARD`.
+Access via Snowsight: Projects → Streamlit → AI_MONITORING_DASHBOARD.
+Deploy/redeploy: `cd monitoring && snow streamlit deploy --replace`.
 6 tabs: Overview, Evaluations, Interaction Quality, Feedback, Token Costs, Alerts. Sidebar filters for environment and date range.
 
 ### CI/CD (GitHub Actions)
@@ -160,13 +167,34 @@ Run with `streamlit run monitoring/dashboard.py`. Uses `st.connection("snowflake
 
 ### Connection Pattern
 
-Python scripts connect via named connection:
+Python scripts connect via named connection or env vars:
 ```python
 import os, snowflake.connector
 conn = snowflake.connector.connect(
     connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"
 )
 ```
+
+### Agent API Pattern
+
+Agent calls use the Cortex Agents Run REST API (recommended by Snowflake):
+```python
+import requests
+url = f"https://{host}/api/v2/cortex/agent:run"
+payload = {
+    "messages": [{"role": "user", "content": [{"type": "text", "text": question}]}],
+    "tools": [{"tool_spec": {"type": "cortex_analyst_text_to_sql", "name": "RetailAnalyst", ...}}],
+    "tool_resources": {
+        "RetailAnalyst": {
+            "semantic_view": "DB.SCHEMA.SV_NAME",
+            "execution_environment": {"type": "warehouse", "warehouse": "WH_NAME"},
+        }
+    },
+}
+resp = requests.post(url, json=payload, headers=headers, stream=True)
+```
+
+The warehouse is passed at request time via `tool_resources.execution_environment` — no Snowsight UI configuration needed.
 
 ### Native Agent Evaluation (GPA Framework)
 - `CALL EXECUTE_AI_EVALUATION('START', OBJECT_CONSTRUCT('run_name', '...'), '@stage/config.yaml')` — start evaluation

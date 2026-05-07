@@ -367,22 +367,112 @@ def deploy_dashboard_sis():
         print("  Deploy manually: cd monitoring && snow streamlit deploy --replace")
 
 
-def configure_warehouse_reminder():
+def populate_dashboard(conn):
     print(f"\n{'='*60}")
-    print(f"  MANUAL STEP REQUIRED")
+    print(f"  Populating Dashboard Data (health check + eval + agent queries)")
     print(f"{'='*60}")
-    print("""
-  The DEV agent's Analyst tool needs a warehouse configured via Snowsight:
 
-  1. Go to Snowsight → AI & ML → Agents
-  2. Select RETAIL_AGENT (in RETAIL_AI_DEV.SEMANTIC)
-  3. Click Edit → Tools → Cortex Analyst (RetailAnalyst)
-  4. Set Warehouse to: RETAIL_AI_EVAL_WH
-  5. Save
+    import subprocess
+    python_exe = sys.executable
 
-  This is a known Snowflake limitation — the warehouse cannot be set
-  via SQL CREATE AGENT. After this step, the agent will work end-to-end.
-""")
+    print("\n  [1/3] Running health check...")
+    try:
+        result = subprocess.run(
+            [python_exe, os.path.join(PROJECT_ROOT, "monitoring", "health_check.py"),
+             "--environment", "dev", "--output", os.path.join(PROJECT_ROOT, "health.json")],
+            capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=120,
+            env={**os.environ, "SNOWFLAKE_CONNECTION_NAME": os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"},
+        )
+        healthy = result.stdout.count("[OK]")
+        total = result.stdout.count("Running:")
+        print(f"    Health checks: {healthy}/{total} passed")
+    except Exception as e:
+        print(f"    WARN: {str(e)[:100]}")
+
+    print("\n  [2/3] Running SV evaluation (easy questions)...")
+    try:
+        result = subprocess.run(
+            [python_exe, os.path.join(PROJECT_ROOT, "evaluation", "evaluate_semantic_view.py"),
+             "--environment", "dev",
+             "--semantic-view", "RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV",
+             "--categories", "easy",
+             "--output", os.path.join(PROJECT_ROOT, "sv_eval.json")],
+            capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=300,
+            env={**os.environ, "SNOWFLAKE_CONNECTION_NAME": os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"},
+        )
+        for line in result.stdout.strip().split("\n"):
+            if "Accuracy:" in line or "Result:" in line:
+                print(f"    {line.strip()}")
+    except Exception as e:
+        print(f"    WARN: {str(e)[:100]}")
+
+    print("\n  [3/3] Sending sample queries to agent (populates observability)...")
+    import requests as req
+    token = conn.rest.token
+    host = conn.host.replace("_", "-").lower()
+    agent_url = f"https://{host}/api/v2/cortex/agent:run"
+    agent_headers = {
+        "Authorization": f'Snowflake Token="{token}"',
+        "Content-Type": "application/json",
+    }
+
+    sample_questions = [
+        "What is our total revenue?",
+        "How many customers do we have?",
+        "Show me top 5 products by revenue",
+        "What is the return rate?",
+        "Compare revenue across customer segments",
+    ]
+    success = 0
+    for q in sample_questions:
+        try:
+            payload = {
+                "messages": [{"role": "user", "content": [{"type": "text", "text": q}]}],
+                "tools": [{"tool_spec": {"type": "cortex_analyst_text_to_sql", "name": "RetailAnalyst", "description": "SQL queries against retail data"}}],
+                "tool_resources": {
+                    "RetailAnalyst": {
+                        "semantic_view": "RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV",
+                        "execution_environment": {"type": "warehouse", "warehouse": "RETAIL_AI_EVAL_WH"},
+                    },
+                },
+            }
+            resp = req.post(agent_url, json=payload, headers=agent_headers, timeout=120, stream=True)
+            has_error = False
+            has_text = False
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                if line.startswith("event: error"):
+                    has_error = True
+                elif line.startswith("data:"):
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        event = json.loads(data)
+                        if "message" in event and "code" in event:
+                            has_error = True
+                            print(f"    SKIP: {q} ({event['message'][:60]})")
+                            break
+                        if "text" in event and event.get("content_index") is not None:
+                            has_text = True
+                    except json.JSONDecodeError:
+                        pass
+            if has_text and not has_error:
+                success += 1
+                print(f"    OK: {q}")
+            elif not has_error:
+                print(f"    SKIP: {q} (no response)")
+        except Exception as e:
+            print(f"    SKIP: {q} ({str(e)[:60]})")
+
+    print(f"\n    Agent queries: {success}/{len(sample_questions)} successful")
+    if success > 0:
+        print("    Observability data will appear in dashboard within minutes.")
+    else:
+        print("\n    NOTE: Agent queries failed. Set the warehouse in Snowsight:")
+        print("      AI & ML → Agents → RETAIL_AGENT → Edit → Tools → RetailAnalyst → Warehouse → RETAIL_AI_EVAL_WH → Save")
+        print("    Then rerun: python setup/bootstrap.py --skip-sql --skip-deploy --skip-eval")
 
 
 def print_summary():
@@ -404,9 +494,10 @@ def print_summary():
   PROD is empty — SV and agent are deployed on merge via CD pipeline.
 
   Next steps:
-    1. Configure warehouse in Snowsight (see MANUAL STEP above)
-    2. Open the dashboard in Snowsight:
+    1. Open the dashboard in Snowsight:
        Projects → Streamlit → AI_MONITORING_DASHBOARD
+    2. Chat with the agent in Snowsight:
+       AI & ML → Agents → RETAIL_AGENT
     3. Push to GitHub and open a PR to test CI/CD
 """)
 
@@ -416,6 +507,7 @@ def main():
     parser.add_argument("--skip-sql", action="store_true", help="Skip SQL setup (if already run)")
     parser.add_argument("--skip-deploy", action="store_true", help="Skip SV/agent deployment")
     parser.add_argument("--skip-eval", action="store_true", help="Skip first evaluation")
+    parser.add_argument("--skip-populate", action="store_true", help="Skip dashboard population (health check + eval + agent queries)")
     args = parser.parse_args()
 
     print("\n" + "="*60)
@@ -460,6 +552,9 @@ def main():
         print("\n  Skipping SQL setup (--skip-sql)")
         cur.execute("USE WAREHOUSE RETAIL_AI_EVAL_WH")
 
+    if not args.skip_sql:
+        cur.execute(f"ALTER USER {user} SET DEFAULT_WAREHOUSE = 'RETAIL_AI_EVAL_WH'")
+
     if not args.skip_deploy:
         try:
             deploy_semantic_view(conn)
@@ -473,12 +568,14 @@ def main():
     if not args.skip_eval:
         run_first_eval(conn)
 
+    if not args.skip_populate:
+        populate_dashboard(conn)
+
     conn.close()
 
     if not args.skip_deploy:
         deploy_dashboard_sis()
 
-    configure_warehouse_reminder()
     print_summary()
 
 

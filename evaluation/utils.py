@@ -5,6 +5,7 @@ Shared utilities for the evaluation framework.
 import os
 import json
 import yaml
+import requests
 import snowflake.connector
 from datetime import datetime
 
@@ -142,17 +143,103 @@ def call_cortex_agent(
     agent_name: str,
     question: str
 ) -> dict:
-    escaped = question.replace("\\", "\\\\").replace('"', '\\"')
-    request_body = json.dumps({
-        "messages": [{"role": "user", "content": [{"type": "text", "text": escaped}]}]
-    })
-    sql = f"SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN('{agent_name}', $${request_body}$$) AS response"
-    cursor = conn.cursor()
-    cursor.execute(sql)
-    result = cursor.fetchone()
-    if result:
-        return json.loads(result[0]) if isinstance(result[0], str) else result[0]
-    return {}
+    parts = agent_name.split(".")
+    if len(parts) != 3:
+        return {"error": f"Invalid agent name: {agent_name}"}
+    database, schema, name = parts
+
+    config = load_config()
+    env_config = None
+    for env, ecfg in config.get("environments", {}).items():
+        if ecfg.get("agent_name") == agent_name:
+            env_config = ecfg
+            break
+    if not env_config:
+        env_config = config.get("environments", {}).get("dev", {})
+
+    warehouse = env_config.get("warehouse", "RETAIL_AI_EVAL_WH")
+    semantic_view = env_config.get("semantic_view", f"{database}.{schema}.RETAIL_ANALYTICS_SV")
+
+    token = conn.rest.token
+    host = conn.host.replace("_", "-").lower()
+
+    url = f"https://{host}/api/v2/cortex/agent:run"
+    headers = {
+        "Authorization": f'Snowflake Token="{token}"',
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messages": [{"role": "user", "content": [{"type": "text", "text": question}]}],
+        "tools": [
+            {
+                "tool_spec": {
+                    "type": "cortex_analyst_text_to_sql",
+                    "name": "RetailAnalyst",
+                    "description": "Converts natural language to SQL queries against retail data",
+                }
+            }
+        ],
+        "tool_resources": {
+            "RetailAnalyst": {
+                "semantic_view": semantic_view,
+                "execution_environment": {
+                    "type": "warehouse",
+                    "warehouse": warehouse,
+                },
+            },
+        },
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
+        if resp.status_code != 200:
+            return {"error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+
+        text_parts = []
+        sql_stmt = ""
+        for line in resp.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            if line.startswith("event: error"):
+                next_line = next(resp.iter_lines(decode_unicode=True), "")
+                if next_line.startswith("data:"):
+                    try:
+                        err = json.loads(next_line[5:].strip())
+                        return {"error": err.get("message", "Unknown error")}
+                    except json.JSONDecodeError:
+                        pass
+                return {"error": "Agent returned error event"}
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                event = json.loads(data)
+                if "message" in event and "code" in event:
+                    return {"error": event["message"]}
+                if "text" in event and "content_index" is not None:
+                    if event.get("text"):
+                        text_parts.append(event["text"])
+                if "content" in event:
+                    for item in event.get("content", []):
+                        if isinstance(item, dict) and item.get("type") == "tool_results":
+                            tool_content = item.get("tool_results", {}).get("content", [])
+                            for tc in tool_content:
+                                if isinstance(tc, dict) and tc.get("type") == "json":
+                                    sql_stmt = sql_stmt or tc.get("json", {}).get("sql", "")
+            except json.JSONDecodeError:
+                pass
+
+        result = {"content": []}
+        if text_parts:
+            result["content"].append({"type": "text", "text": "".join(text_parts)})
+        if sql_stmt:
+            result["content"].append({"type": "sql", "statement": sql_stmt})
+        return result
+
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
 
 
 def llm_complete(conn: snowflake.connector.SnowflakeConnection, model: str, prompt: str) -> str:

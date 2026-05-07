@@ -131,14 +131,10 @@ This single command will:
 6. Create monitoring tables, views, tasks (5 daily/weekly), and alerts (7)
 7. Deploy the semantic view to DEV
 8. Deploy the Cortex Agent to DEV
-9. Run a first SV audit evaluation
-
-After bootstrap completes, **one manual step** is required:
-
-> **Set the agent warehouse in Snowsight:**
-> Go to **AI & ML → Agents → RETAIL_AGENT → Edit → Tools → Cortex Analyst → Warehouse → `RETAIL_AI_EVAL_WH` → Save**
->
-> This is a known Snowflake limitation — the warehouse cannot be set via `CREATE AGENT` SQL.
+9. Set your user's default warehouse to `RETAIL_AI_EVAL_WH`
+10. Run a first SV audit evaluation
+11. **Populate the dashboard** — runs health check, SV eval, and 5 sample agent queries
+12. Deploy the monitoring dashboard to Snowflake (SiS)
 
 ### Monitoring Dashboard (Streamlit in Snowflake)
 
@@ -195,10 +191,11 @@ Then:
 ### Bootstrap Options
 
 ```bash
-python setup/bootstrap.py                # Full setup
-python setup/bootstrap.py --skip-sql     # Skip SQL (if already run)
-python setup/bootstrap.py --skip-deploy  # Skip SV/agent deployment
-python setup/bootstrap.py --skip-eval    # Skip first evaluation
+python setup/bootstrap.py                  # Full setup (recommended for first run)
+python setup/bootstrap.py --skip-sql       # Skip SQL (if already run)
+python setup/bootstrap.py --skip-deploy    # Skip SV/agent deployment
+python setup/bootstrap.py --skip-eval      # Skip first evaluation
+python setup/bootstrap.py --skip-populate  # Skip dashboard population
 ```
 
 ---
