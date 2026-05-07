@@ -26,3 +26,6 @@ llm:
   model: claude-opus-4-7
   judge_model: claude-opus-4-7
   analyst_model: default
+
+pricing:
+  credits_per_million_tokens: 1.0

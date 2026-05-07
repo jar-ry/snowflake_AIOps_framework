@@ -38,7 +38,7 @@ tab_overview, tab_evals, tab_quality, tab_feedback, tab_costs, tab_alerts = st.t
     ":material/check_circle: Evaluations",
     ":material/flag: Interaction quality",
     ":material/chat: Feedback",
-    ":material/payments: Token costs",
+    ":material/payments: Credits",
     ":material/warning: Alerts",
 ])
 
@@ -47,7 +47,7 @@ with tab_overview:
 
     weekly = run_query(f"""
         SELECT week_start, environment, total_requests, success_rate_pct,
-               total_tokens, total_cost_usd, avg_latency_ms, total_user_sessions
+               total_tokens, total_credits, avg_latency_ms, total_user_sessions
         FROM RETAIL_AI_EVAL.MONITORING.V_WEEKLY_EXECUTIVE_SUMMARY
         WHERE week_start >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
         ORDER BY week_start DESC
@@ -73,9 +73,9 @@ with tab_overview:
             )
         with c3:
             st.metric(
-                "Weekly cost",
-                f"${latest['TOTAL_COST_USD']:.2f}",
-                delta=f"${latest['TOTAL_COST_USD'] - prev['TOTAL_COST_USD']:+.2f}" if len(weekly) > 1 else None,
+                "Weekly credits",
+                f"{latest['TOTAL_CREDITS']:.4f}",
+                delta=f"{latest['TOTAL_CREDITS'] - prev['TOTAL_CREDITS']:+.4f}" if len(weekly) > 1 else None,
                 delta_color="inverse",
             )
         with c4:
@@ -106,8 +106,8 @@ with tab_overview:
                 use_container_width=True,
             )
         with col2:
-            st.markdown("**Cost trend**")
-            st.bar_chart(weekly_sorted, x="WEEK_START", y="TOTAL_COST_USD")
+            st.markdown("**Credits trend**")
+            st.bar_chart(weekly_sorted, x="WEEK_START", y="TOTAL_CREDITS")
     else:
         st.info("No executive summary data available yet.")
 
@@ -318,13 +318,13 @@ with tab_feedback:
         st.info("No feedback data available yet.")
 
 with tab_costs:
-    st.header("Token usage & costs")
+    st.header("Token usage & credits")
 
     costs = run_query(f"""
         SELECT metric_date, environment, service_type, agent_or_sv_name,
-               total_requests, total_tokens, estimated_cost_usd,
+               total_requests, total_tokens, estimated_credits,
                avg_latency_ms, p95_latency_ms, error_rate_pct,
-               rolling_7d_cost_usd, rolling_7d_avg_latency_ms
+               rolling_7d_credits, rolling_7d_avg_latency_ms
         FROM RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND
         WHERE metric_date >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
         ORDER BY metric_date DESC
@@ -334,12 +334,12 @@ with tab_costs:
         totals = costs.groupby("METRIC_DATE").agg({
             "TOTAL_REQUESTS": "sum",
             "TOTAL_TOKENS": "sum",
-            "ESTIMATED_COST_USD": "sum",
+            "ESTIMATED_CREDITS": "sum",
         }).reset_index().sort_values("METRIC_DATE")
 
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            st.metric("Total cost", f"${costs['ESTIMATED_COST_USD'].sum():,.2f}")
+            st.metric("Total credits", f"{costs['ESTIMATED_CREDITS'].sum():,.4f}")
         with c2:
             st.metric("Total tokens", f"{costs['TOTAL_TOKENS'].sum():,.0f}")
         with c3:
@@ -349,12 +349,12 @@ with tab_costs:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**Daily cost by service**")
+            st.markdown("**Daily credits by service**")
             chart = alt.Chart(costs.sort_values("METRIC_DATE")).mark_bar().encode(
                 x=alt.X("METRIC_DATE:T", title="Date"),
-                y=alt.Y("sum(ESTIMATED_COST_USD):Q", title="Cost (USD)"),
+                y=alt.Y("sum(ESTIMATED_CREDITS):Q", title="Credits"),
                 color="SERVICE_TYPE:N",
-                tooltip=["METRIC_DATE:T", "SERVICE_TYPE:N", "sum(ESTIMATED_COST_USD):Q"],
+                tooltip=["METRIC_DATE:T", "SERVICE_TYPE:N", "sum(ESTIMATED_CREDITS):Q"],
             )
             st.altair_chart(chart, use_container_width=True)
 
@@ -386,7 +386,7 @@ with tab_costs:
         )
         st.altair_chart(chart, use_container_width=True)
     else:
-        st.info("No token cost data available yet.")
+        st.info("No token credit data available yet.")
 
 with tab_alerts:
     st.header("Active alerts")

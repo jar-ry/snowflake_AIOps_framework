@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS RETAIL_AI_EVAL.MONITORING.USAGE_METRICS (
     total_input_tokens  BIGINT,
     total_output_tokens BIGINT,
     total_tokens        BIGINT,
-    estimated_cost_usd  FLOAT,
+    estimated_credits   FLOAT,
     avg_latency_ms      FLOAT,
     p50_latency_ms      FLOAT,
     p95_latency_ms      FLOAT,

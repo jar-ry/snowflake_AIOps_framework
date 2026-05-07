@@ -168,64 +168,70 @@ FROM thread_summary;
 -- ============================================================
 CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_FLAGS AS
 
-SELECT
-    'request' AS signal_source,
-    trace_id AS interaction_id,
-    thread_id,
-    database_name AS environment,
-    agent_name,
-    user_query,
-    request_start AS event_time,
-    total_duration_ms,
-    total_tokens,
-    max_step AS steps,
-    max_same_tool_calls,
-    flag_count,
-    ARRAY_CONSTRUCT_COMPACT(
-        IFF(flag_tool_looping, 'TOOL_LOOPING', NULL),
-        IFF(flag_excessive_steps, 'EXCESSIVE_STEPS', NULL),
-        IFF(flag_slow_request, 'SLOW_REQUEST', NULL),
-        IFF(flag_high_token_burn, 'HIGH_TOKEN_BURN', NULL),
-        IFF(flag_planning_error, 'PLANNING_ERROR', NULL)
-    ) AS flags,
-    CASE
-        WHEN flag_planning_error THEN 'CRITICAL'
-        WHEN flag_tool_looping AND flag_high_token_burn THEN 'CRITICAL'
-        WHEN flag_tool_looping OR flag_excessive_steps THEN 'WARNING'
-        WHEN flag_slow_request OR flag_high_token_burn THEN 'WARNING'
-        ELSE 'INFO'
-    END AS severity
-FROM RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS
-WHERE flag_count > 0
+SELECT signal_source, interaction_id, thread_id, environment,
+       agent_name, user_query, event_time, total_duration_ms,
+       total_tokens, steps, max_same_tool_calls, flag_count, flags, severity
+FROM (
+    SELECT
+        'request' AS signal_source,
+        trace_id AS interaction_id,
+        thread_id,
+        database_name AS environment,
+        agent_name,
+        user_query,
+        request_start AS event_time,
+        total_duration_ms,
+        total_tokens,
+        max_step AS steps,
+        max_same_tool_calls,
+        flag_count,
+        ARRAY_CONSTRUCT_COMPACT(
+            IFF(flag_tool_looping, 'TOOL_LOOPING', NULL),
+            IFF(flag_excessive_steps, 'EXCESSIVE_STEPS', NULL),
+            IFF(flag_slow_request, 'SLOW_REQUEST', NULL),
+            IFF(flag_high_token_burn, 'HIGH_TOKEN_BURN', NULL),
+            IFF(flag_planning_error, 'PLANNING_ERROR', NULL)
+        ) AS flags,
+        CASE
+            WHEN flag_planning_error THEN 'CRITICAL'
+            WHEN flag_tool_looping AND flag_high_token_burn THEN 'CRITICAL'
+            WHEN flag_tool_looping OR flag_excessive_steps THEN 'WARNING'
+            WHEN flag_slow_request OR flag_high_token_burn THEN 'WARNING'
+            ELSE 'INFO'
+        END AS severity
+    FROM RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS
+    WHERE flag_count > 0
 
-UNION ALL
+    UNION ALL
 
-SELECT
-    'thread' AS signal_source,
-    thread_id AS interaction_id,
-    thread_id,
-    database_name AS environment,
-    agent_name,
-    NULL AS user_query,
-    first_turn AS event_time,
-    conversation_duration_min * 60000 AS total_duration_ms,
-    NULL AS total_tokens,
-    turn_count AS steps,
-    NULL AS max_same_tool_calls,
-    flag_count,
-    ARRAY_CONSTRUCT_COMPACT(
-        IFF(flag_single_turn_dropoff, 'SINGLE_TURN_DROPOFF', NULL),
-        IFF(flag_rapid_rephrasing, 'RAPID_REPHRASING', NULL),
-        IFF(flag_abandoned_conversation, 'ABANDONED_CONVERSATION', NULL)
-    ) AS flags,
-    CASE
-        WHEN flag_abandoned_conversation AND flag_rapid_rephrasing THEN 'CRITICAL'
-        WHEN flag_rapid_rephrasing THEN 'WARNING'
-        WHEN flag_abandoned_conversation THEN 'WARNING'
-        ELSE 'INFO'
-    END AS severity
-FROM RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS
-WHERE flag_count > 0;
+    SELECT
+        'thread' AS signal_source,
+        thread_id AS interaction_id,
+        thread_id,
+        database_name AS environment,
+        agent_name,
+        NULL AS user_query,
+        first_turn AS event_time,
+        conversation_duration_min * 60000 AS total_duration_ms,
+        NULL AS total_tokens,
+        turn_count AS steps,
+        NULL AS max_same_tool_calls,
+        flag_count,
+        ARRAY_CONSTRUCT_COMPACT(
+            IFF(flag_single_turn_dropoff, 'SINGLE_TURN_DROPOFF', NULL),
+            IFF(flag_rapid_rephrasing, 'RAPID_REPHRASING', NULL),
+            IFF(flag_abandoned_conversation, 'ABANDONED_CONVERSATION', NULL)
+        ) AS flags,
+        CASE
+            WHEN flag_abandoned_conversation AND flag_rapid_rephrasing THEN 'CRITICAL'
+            WHEN flag_rapid_rephrasing THEN 'WARNING'
+            WHEN flag_abandoned_conversation THEN 'WARNING'
+            ELSE 'INFO'
+        END AS severity
+    FROM RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS
+    WHERE flag_count > 0
+) sub
+WHERE agent_name IS NOT NULL;
 
 -- ============================================================
 -- TABLE: Daily interaction quality summary

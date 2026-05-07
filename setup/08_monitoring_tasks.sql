@@ -25,7 +25,7 @@ BEGIN
         metric_date, environment, service_type, agent_or_sv_name,
         total_requests, successful_requests, failed_requests,
         total_input_tokens, total_output_tokens, total_tokens,
-        estimated_cost_usd, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms,
+        estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms,
         unique_users
     )
     SELECT
@@ -43,7 +43,7 @@ BEGIN
         COALESCE(SUM(input_tokens), 0)                                               AS total_input_tokens,
         COALESCE(SUM(output_tokens), 0)                                              AS total_output_tokens,
         COALESCE(SUM(total_tokens), 0)                                               AS total_tokens,
-        COALESCE(SUM(total_tokens), 0) * 0.000003                                    AS estimated_cost_usd,
+        COALESCE(SUM(total_tokens), 0) / 1000000.0 * 1.0                           AS estimated_credits, -- credits_per_million_tokens from config/environments.yaml
         AVG(planning_duration_ms)                                                    AS avg_latency_ms,
         APPROX_PERCENTILE(planning_duration_ms, 0.5)                                 AS p50_latency_ms,
         APPROX_PERCENTILE(planning_duration_ms, 0.95)                                AS p95_latency_ms,

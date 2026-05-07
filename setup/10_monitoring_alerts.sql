@@ -119,8 +119,8 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY
         SELECT 1
         FROM RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND
         WHERE metric_date = CURRENT_DATE() - 1
-          AND rolling_7d_cost_usd > 0
-          AND estimated_cost_usd > (rolling_7d_cost_usd / 7.0) * 2
+          AND rolling_7d_credits > 0
+          AND estimated_credits > (rolling_7d_credits / 7.0) * 2
     ))
     THEN
         INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
@@ -128,20 +128,20 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY
         SELECT
             'cost_anomaly',
             CASE
-                WHEN estimated_cost_usd > (rolling_7d_cost_usd / 7.0) * 5 THEN 'CRITICAL'
+                WHEN estimated_credits > (rolling_7d_credits / 7.0) * 5 THEN 'CRITICAL'
                 ELSE 'WARNING'
             END,
             environment,
             agent_or_sv_name,
-            service_type || ' cost anomaly: $' || ROUND(estimated_cost_usd, 2) ||
-                ' (7-day daily avg: $' || ROUND(rolling_7d_cost_usd / 7.0, 2) ||
-                ', ' || ROUND(estimated_cost_usd / NULLIF(rolling_7d_cost_usd / 7.0, 0), 1) || 'x normal)',
-            estimated_cost_usd,
-            ROUND(rolling_7d_cost_usd / 7.0 * 2, 2)
+            service_type || ' credit anomaly: ' || ROUND(estimated_credits, 4) || ' credits' ||
+                ' (7-day daily avg: ' || ROUND(rolling_7d_credits / 7.0, 4) || ' credits' ||
+                ', ' || ROUND(estimated_credits / NULLIF(rolling_7d_credits / 7.0, 0), 1) || 'x normal)',
+            estimated_credits,
+            ROUND(rolling_7d_credits / 7.0 * 2, 4)
         FROM RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND
         WHERE metric_date = CURRENT_DATE() - 1
-          AND rolling_7d_cost_usd > 0
-          AND estimated_cost_usd > (rolling_7d_cost_usd / 7.0) * 2;
+          AND rolling_7d_credits > 0
+          AND estimated_credits > (rolling_7d_credits / 7.0) * 2;
 
 -- ============================================================
 -- ALERT 5: Agent error spike

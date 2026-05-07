@@ -22,12 +22,24 @@ import re
 import sys
 import json
 import time
+import yaml
 import argparse
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "evaluation"))
 
 import snowflake.connector
+
+
+def load_schedule_config(profile: str = "demo") -> dict:
+    config_path = os.path.join(PROJECT_ROOT, "config", "schedules.yaml")
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    profiles = config.get("profiles", {})
+    if profile not in profiles:
+        print(f"  WARN: Schedule profile '{profile}' not found, falling back to 'demo'")
+        profile = "demo"
+    return profiles[profile]["tasks"]
 
 
 def get_connection():
@@ -204,36 +216,40 @@ def run_first_eval(conn):
         print(f"  WARN: Audit skipped ({str(e)[:100]})")
 
 
-def create_tasks_directly(cur):
+def create_tasks_directly(cur, schedule_profile="demo"):
     print(f"\n{'='*60}")
-    print(f"  Creating tasks and stored procs (direct SQL)")
+    print(f"  Creating tasks and stored procs (schedule profile: {schedule_profile})")
     print(f"{'='*60}")
 
+    schedules = load_schedule_config(schedule_profile)
+    config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
+    credits_per_m = config.get("pricing", {}).get("credits_per_million_tokens", 1.0)
+
     tasks = [
-        ("TASK_DAILY_USAGE_AGGREGATION", "USING CRON 0 2 * * * UTC", """
+        ("TASK_DAILY_USAGE_AGGREGATION", schedules["usage_aggregation"]["schedule"], f"""
             INSERT INTO RETAIL_AI_EVAL.MONITORING.USAGE_METRICS (
                 metric_date, environment, service_type, agent_or_sv_name,
                 total_requests, successful_requests, failed_requests,
                 total_input_tokens, total_output_tokens, total_tokens,
-                estimated_cost_usd, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
+                estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
             SELECT CURRENT_DATE()-1, COALESCE(database_name, 'UNKNOWN'),
                 CASE WHEN span_name LIKE 'ReasoningAgentStep%' OR span_name LIKE 'CodingAgent%' THEN 'cortex_agent'
                      WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst' ELSE 'other' END,
                 COALESCE(agent_name, 'unknown'),
                 COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
                 COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
-                COALESCE(SUM(total_tokens),0)*0.000003, AVG(planning_duration_ms),
+                COALESCE(SUM(total_tokens),0)/1000000.0*{credits_per_m}, AVG(planning_duration_ms),
                 APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
                 APPROX_PERCENTILE(planning_duration_ms,0.99), 0
             FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
             WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()
               AND (span_name LIKE 'ReasoningAgentStepPlanning%' OR span_name LIKE 'CodingAgent.Step%' OR span_name ILIKE '%Analyst%')
             GROUP BY 1,2,3,4"""),
-        ("TASK_DAILY_FEEDBACK_ANALYSIS", "USING CRON 15 2 * * * UTC", """
+        ("TASK_DAILY_FEEDBACK_ANALYSIS", schedules["feedback_analysis"]["schedule"], """
             UPDATE RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
             SET sentiment_score = SNOWFLAKE.CORTEX.SENTIMENT(COALESCE(feedback_text,'') || ' Rating: ' || feedback_rating::STRING)
             WHERE sentiment_score IS NULL AND (feedback_text IS NOT NULL OR feedback_rating IS NOT NULL)"""),
-        ("TASK_DAILY_HEALTH_CHECKS", "USING CRON 0 6 * * * UTC", """
+        ("TASK_DAILY_HEALTH_CHECKS", schedules["health_checks"]["schedule"], """
             INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
             SELECT 'error_rate', 'prod', 'ALL_SERVICES',
                 CASE WHEN ROUND(COUNT_IF(RECORD:status.code::STRING != 'STATUS_CODE_OK')*100.0/NULLIF(COUNT(*),0),2) > 20 THEN 'UNHEALTHY'
@@ -312,8 +328,8 @@ $$""",
     }
 
     weekly_tasks = [
-        ("TASK_WEEKLY_SV_EVAL", "USING CRON 0 4 * * 0 UTC", "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_SV_EVAL()"),
-        ("TASK_WEEKLY_AGENT_EVAL", "USING CRON 0 5 * * 0 UTC", "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_AGENT_EVAL()"),
+        ("TASK_WEEKLY_SV_EVAL", schedules["weekly_sv_eval"]["schedule"], "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_SV_EVAL()"),
+        ("TASK_WEEKLY_AGENT_EVAL", schedules["weekly_agent_eval"]["schedule"], "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_AGENT_EVAL()"),
     ]
 
     for name, sql in procs.items():
@@ -372,6 +388,9 @@ def populate_dashboard(conn):
     print(f"  Populating Dashboard Data (health check + eval + agent queries)")
     print(f"{'='*60}")
 
+    config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
+    credits_per_m = config.get("pricing", {}).get("credits_per_million_tokens", 1.0)
+
     import subprocess
     python_exe = sys.executable
 
@@ -416,13 +435,26 @@ def populate_dashboard(conn):
         "Content-Type": "application/json",
     }
 
-    sample_questions = [
-        "What is our total revenue?",
-        "How many customers do we have?",
-        "Show me top 5 products by revenue",
-        "What is the return rate?",
-        "Compare revenue across customer segments",
-    ]
+    sample_questions = []
+    try:
+        import yaml as _yaml
+        for bank_file in [
+            os.path.join(PROJECT_ROOT, "question_banks", "agent", "answerable_questions.yaml"),
+            os.path.join(PROJECT_ROOT, "question_banks", "semantic_view", "hard_questions.yaml"),
+            os.path.join(PROJECT_ROOT, "question_banks", "agent", "adversarial_questions.yaml"),
+        ]:
+            with open(bank_file) as f:
+                bank = _yaml.safe_load(f)
+            for q in bank.get("questions", []):
+                sample_questions.append(q["question"])
+    except Exception:
+        sample_questions = [
+            "What is our total revenue?",
+            "How many customers do we have?",
+            "Show me top 5 products by revenue",
+            "What is the return rate?",
+            "Compare revenue across customer segments",
+        ]
     success = 0
     for q in sample_questions:
         try:
@@ -462,6 +494,147 @@ def populate_dashboard(conn):
     print(f"\n    Agent queries: {success}/{len(sample_questions)} successful")
     if success > 0:
         print("    Observability data will appear in Snowsight under RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT.")
+        print("    Aggregating into dashboard tables (normally done by daily tasks)...")
+        time.sleep(5)
+        try:
+            cur = conn.cursor()
+            cur.execute(f'''
+INSERT INTO RETAIL_AI_EVAL.MONITORING.USAGE_METRICS (
+    metric_date, environment, service_type, agent_or_sv_name,
+    total_requests, successful_requests, failed_requests,
+    total_input_tokens, total_output_tokens, total_tokens,
+    estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
+SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'),
+    CASE WHEN span_name LIKE 'ReasoningAgentStep%' THEN 'cortex_agent'
+         WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst' ELSE 'other' END,
+    COALESCE(agent_name, 'unknown'),
+    COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
+    COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
+    COALESCE(SUM(total_tokens),0)/1000000.0*{credits_per_m}, AVG(planning_duration_ms),
+    APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
+    APPROX_PERCENTILE(planning_duration_ms,0.99), 0
+FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()+1
+  AND agent_name = 'RETAIL_AGENT'
+GROUP BY 1,2,3,4
+''')
+            cur.execute('''
+INSERT INTO RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY (
+    summary_date, environment, agent_name,
+    total_requests, total_threads, flagged_requests, flagged_request_pct,
+    tool_looping_count, excessive_steps_count, slow_request_count,
+    high_token_burn_count, planning_error_count,
+    single_turn_dropoff_count, rapid_rephrasing_count, abandoned_count,
+    critical_count, warning_count)
+SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'), COALESCE(agent_name, 'unknown'),
+    COUNT(DISTINCT trace_id), COUNT(DISTINCT thread_id),
+    COUNT_IF(total_tokens > 50000 OR planning_duration_ms > 30000),
+    ROUND(COUNT_IF(total_tokens > 50000 OR planning_duration_ms > 30000) * 100.0 / NULLIF(COUNT(DISTINCT trace_id),0), 2),
+    0, COUNT_IF(step_number > 5), COUNT_IF(planning_duration_ms > 30000),
+    COUNT_IF(total_tokens > 50000), COUNT_IF(planning_status != 'success' AND planning_status IS NOT NULL),
+    0, 0, 0, COUNT_IF(total_tokens > 100000), COUNT_IF(total_tokens > 50000 AND total_tokens <= 100000)
+FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()+1
+  AND agent_name = 'RETAIL_AGENT' AND span_name LIKE 'ReasoningAgentStep%'
+GROUP BY 1,2,3
+''')
+            print("    Dashboard tables populated.")
+        except Exception as e:
+            print(f"    WARN: Could not aggregate: {str(e)[:100]}")
+
+    print("\n  [4/4] Generating mock user feedback...")
+    generate_mock_feedback(conn)
+
+
+def generate_mock_feedback(conn):
+    cur = conn.cursor()
+    feedback_data = [
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What is our total revenue?",
+         "Total revenue is $2.4M across all channels.", 5,
+         "Great answer, exactly what I needed!", "accuracy"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Show me top products by revenue",
+         "Here are the top 5 products by revenue...", 4,
+         "Good breakdown but would be nice to see percentages too", "completeness"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "How many customers do we have?",
+         "We have 500 customers in total.", 5,
+         "Quick and accurate", "accuracy"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What is the return rate?",
+         "The overall return rate is 12.3%.", 3,
+         "I expected a breakdown by product category", "completeness"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Compare revenue across segments",
+         "Premium segment leads with 45% of revenue...", 4,
+         "Useful comparison, could use a chart next time", "presentation"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What was last month revenue?",
+         "I'm unable to determine the time period from the data.", 2,
+         "It should know what last month means", "accuracy"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Show me slow-selling products",
+         "Products with lowest sales velocity: ...", 4,
+         "Helpful, saved me time writing a query", "usefulness"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Customer acquisition trend",
+         "Monthly new customer signups show...", 1,
+         "Completely wrong data, these numbers don't match our reports", "accuracy"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Average order value by store",
+         "Store A: $85, Store B: $72, Store C: $91...", 5,
+         "Perfect, exactly what the exec team asked for", "usefulness"),
+        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Which customers are at risk of churning?",
+         "Based on order recency and frequency...", 4,
+         "Good heuristic approach, would like ML-based scoring next", "completeness"),
+    ]
+
+    try:
+        values_parts = []
+        for i, (env, src, agent, query, response, rating, text, category) in enumerate(feedback_data):
+            escaped_query = query.replace("'", "''")
+            escaped_response = response.replace("'", "''")
+            escaped_text = text.replace("'", "''")
+            values_parts.append(f"""
+                SELECT 'fb_demo_{i+1}', '{env}', '{src}', '{agent}',
+                       '{escaped_query}', '{escaped_response}', {rating},
+                       '{escaped_text}', '{category}', NULL, 'DEMO_USER',
+                       DATEADD('hour', -{(len(feedback_data)-i)*2}, CURRENT_TIMESTAMP())
+            """)
+
+        insert_sql = f"""
+            INSERT INTO RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
+                (feedback_id, environment, source, agent_or_sv_name, user_query,
+                 agent_response, feedback_rating, feedback_text, feedback_category,
+                 sentiment_score, user_name, created_at)
+            {' UNION ALL '.join(values_parts)}
+        """
+        cur.execute(insert_sql)
+        print(f"    Inserted {len(feedback_data)} feedback entries")
+
+        cur.execute("""
+            UPDATE RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
+            SET sentiment_score = SNOWFLAKE.CORTEX.SENTIMENT(COALESCE(feedback_text,'') || ' Rating: ' || feedback_rating::STRING)
+            WHERE sentiment_score IS NULL AND feedback_id LIKE 'fb_demo_%'
+        """)
+        print("    Sentiment analysis complete")
+
+        cur.execute(f"""
+            INSERT INTO RETAIL_AI_EVAL.MONITORING.FEEDBACK_DAILY_SUMMARY
+                (summary_date, environment, agent_or_sv_name, total_feedback,
+                 positive_count, neutral_count, negative_count, avg_rating,
+                 avg_sentiment_score, negative_pct, feedback_categories, computed_at)
+            SELECT CURRENT_DATE(), 'RETAIL_AI_DEV', 'RETAIL_AGENT',
+                COUNT(*),
+                COUNT_IF(feedback_rating >= 4),
+                COUNT_IF(feedback_rating = 3),
+                COUNT_IF(feedback_rating <= 2),
+                AVG(feedback_rating),
+                AVG(sentiment_score),
+                ROUND(COUNT_IF(feedback_rating <= 2) * 100.0 / COUNT(*), 1),
+                OBJECT_CONSTRUCT('accuracy', COUNT_IF(feedback_category='accuracy'),
+                                 'completeness', COUNT_IF(feedback_category='completeness'),
+                                 'presentation', COUNT_IF(feedback_category='presentation'),
+                                 'usefulness', COUNT_IF(feedback_category='usefulness')),
+                CURRENT_TIMESTAMP()
+            FROM RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
+            WHERE feedback_id LIKE 'fb_demo_%'
+        """)
+        print("    Feedback daily summary aggregated")
+    except Exception as e:
+        print(f"    WARN: Feedback generation failed: {str(e)[:120]}")
 
 
 def print_summary():
@@ -497,6 +670,8 @@ def main():
     parser.add_argument("--skip-deploy", action="store_true", help="Skip SV/agent deployment")
     parser.add_argument("--skip-eval", action="store_true", help="Skip first evaluation")
     parser.add_argument("--skip-populate", action="store_true", help="Skip dashboard population (health check + eval + agent queries)")
+    parser.add_argument("--schedule-profile", default="demo", choices=["demo", "prod"],
+                        help="Task schedule profile: 'demo' (every 15 min) or 'prod' (realistic daily/weekly)")
     args = parser.parse_args()
 
     print("\n" + "="*60)
@@ -536,7 +711,7 @@ def main():
             else:
                 print(f"  SKIP: {script} (not found)")
 
-        create_tasks_directly(cur)
+        create_tasks_directly(cur, schedule_profile=args.schedule_profile)
     else:
         print("\n  Skipping SQL setup (--skip-sql)")
         cur.execute("USE WAREHOUSE RETAIL_AI_EVAL_WH")

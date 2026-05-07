@@ -136,7 +136,7 @@ SELECT
     total_input_tokens,
     total_output_tokens,
     total_tokens,
-    estimated_cost_usd,
+    estimated_credits,
     avg_latency_ms,
     p95_latency_ms,
     unique_users,
@@ -145,11 +145,11 @@ SELECT
         ORDER BY metric_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     )                                           AS rolling_7d_tokens,
-    SUM(estimated_cost_usd) OVER (
+    SUM(estimated_credits) OVER (
         PARTITION BY environment, service_type, agent_or_sv_name
         ORDER BY metric_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-    )                                           AS rolling_7d_cost_usd,
+    )                                           AS rolling_7d_credits,
     AVG(avg_latency_ms) OVER (
         PARTITION BY environment, service_type, agent_or_sv_name
         ORDER BY metric_date
@@ -160,11 +160,11 @@ SELECT
         ORDER BY metric_date
         ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
     )                                           AS rolling_30d_requests,
-    SUM(estimated_cost_usd) OVER (
+    SUM(estimated_credits) OVER (
         PARTITION BY environment, service_type, agent_or_sv_name
         ORDER BY metric_date
         ROWS BETWEEN 29 PRECEDING AND CURRENT ROW
-    )                                           AS rolling_30d_cost_usd,
+    )                                           AS rolling_30d_credits,
     ROUND(
         COALESCE(failed_requests, 0) * 100.0 / NULLIF(total_requests, 0), 2
     )                                           AS error_rate_pct
@@ -248,7 +248,7 @@ SELECT
     SUM(successful_requests)                            AS successful_requests,
     ROUND(SUM(successful_requests) * 100.0 / NULLIF(SUM(total_requests), 0), 2) AS success_rate_pct,
     SUM(total_tokens)                                   AS total_tokens,
-    SUM(estimated_cost_usd)                             AS total_cost_usd,
+    SUM(estimated_credits)                             AS total_credits,
     AVG(avg_latency_ms)                                 AS avg_latency_ms,
     SUM(unique_users)                                   AS total_user_sessions
 FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
