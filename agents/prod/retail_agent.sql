@@ -40,4 +40,7 @@ CREATE OR REPLACE AGENT RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT
   tool_resources:
     RetailAnalyst:
       semantic_view: "RETAIL_AI_PROD.SEMANTIC.RETAIL_ANALYTICS_SV"
+      execution_environment:
+        type: "warehouse"
+        warehouse: "RETAIL_AI_EVAL_WH"
   $$;

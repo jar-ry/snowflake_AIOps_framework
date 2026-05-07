@@ -410,7 +410,7 @@ def populate_dashboard(conn):
     import requests as req
     token = conn.rest.token
     host = conn.host.replace("_", "-").lower()
-    agent_url = f"https://{host}/api/v2/cortex/agent:run"
+    agent_url = f"https://{host}/api/v2/databases/RETAIL_AI_DEV/schemas/SEMANTIC/agents/RETAIL_AGENT:run"
     agent_headers = {
         "Authorization": f'Snowflake Token="{token}"',
         "Content-Type": "application/json",
@@ -428,13 +428,6 @@ def populate_dashboard(conn):
         try:
             payload = {
                 "messages": [{"role": "user", "content": [{"type": "text", "text": q}]}],
-                "tools": [{"tool_spec": {"type": "cortex_analyst_text_to_sql", "name": "RetailAnalyst", "description": "SQL queries against retail data"}}],
-                "tool_resources": {
-                    "RetailAnalyst": {
-                        "semantic_view": "RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV",
-                        "execution_environment": {"type": "warehouse", "warehouse": "RETAIL_AI_EVAL_WH"},
-                    },
-                },
             }
             resp = req.post(agent_url, json=payload, headers=agent_headers, timeout=120, stream=True)
             has_error = False
@@ -454,7 +447,7 @@ def populate_dashboard(conn):
                             has_error = True
                             print(f"    SKIP: {q} ({event['message'][:60]})")
                             break
-                        if "text" in event and event.get("content_index") is not None:
+                        if "text" in event:
                             has_text = True
                     except json.JSONDecodeError:
                         pass
@@ -468,11 +461,7 @@ def populate_dashboard(conn):
 
     print(f"\n    Agent queries: {success}/{len(sample_questions)} successful")
     if success > 0:
-        print("    Observability data will appear in dashboard within minutes.")
-    else:
-        print("\n    NOTE: Agent queries failed. Set the warehouse in Snowsight:")
-        print("      AI & ML → Agents → RETAIL_AGENT → Edit → Tools → RetailAnalyst → Warehouse → RETAIL_AI_EVAL_WH → Save")
-        print("    Then rerun: python setup/bootstrap.py --skip-sql --skip-deploy --skip-eval")
+        print("    Observability data will appear in Snowsight under RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT.")
 
 
 def print_summary():

@@ -148,46 +148,16 @@ def call_cortex_agent(
         return {"error": f"Invalid agent name: {agent_name}"}
     database, schema, name = parts
 
-    config = load_config()
-    env_config = None
-    for env, ecfg in config.get("environments", {}).items():
-        if ecfg.get("agent_name") == agent_name:
-            env_config = ecfg
-            break
-    if not env_config:
-        env_config = config.get("environments", {}).get("dev", {})
-
-    warehouse = env_config.get("warehouse", "RETAIL_AI_EVAL_WH")
-    semantic_view = env_config.get("semantic_view", f"{database}.{schema}.RETAIL_ANALYTICS_SV")
-
     token = conn.rest.token
     host = conn.host.replace("_", "-").lower()
 
-    url = f"https://{host}/api/v2/cortex/agent:run"
+    url = f"https://{host}/api/v2/databases/{database}/schemas/{schema}/agents/{name}:run"
     headers = {
         "Authorization": f'Snowflake Token="{token}"',
         "Content-Type": "application/json",
     }
     payload = {
         "messages": [{"role": "user", "content": [{"type": "text", "text": question}]}],
-        "tools": [
-            {
-                "tool_spec": {
-                    "type": "cortex_analyst_text_to_sql",
-                    "name": "RetailAnalyst",
-                    "description": "Converts natural language to SQL queries against retail data",
-                }
-            }
-        ],
-        "tool_resources": {
-            "RetailAnalyst": {
-                "semantic_view": semantic_view,
-                "execution_environment": {
-                    "type": "warehouse",
-                    "warehouse": warehouse,
-                },
-            },
-        },
     }
 
     try:
