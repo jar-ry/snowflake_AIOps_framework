@@ -17,10 +17,55 @@ Prove feasibility of the Snowflake AIOps Agent Enforcement Framework to potentia
 - [ ] Log into Snowsight, verify RETAIL_AI_DEV databases visible
 - [ ] Resume warehouse: `ALTER WAREHOUSE RETAIL_AI_EVAL_WH RESUME;`
 - [ ] Open agent in Snowsight chat, ask "How many customers?" — confirm it returns 500
-- [ ] Open Streamlit dashboard, verify at least 3 tabs render with data
+- [ ] Seed dashboard data so every tab renders (see "Demo Data" below)
+- [ ] Flip task schedules to `demo` profile so graphs update live during the demo
+- [ ] Open Streamlit dashboard, verify all 6 tabs render with data
 - [ ] Have architecture.html open locally as backup
 - [ ] Have terminal ready with repo cloned (for live audit_semantic_view.py if needed)
 - [ ] Prepare backup screenshots/video of each step in case of live failures
+
+---
+
+## Demo Data — Light up the Dashboard
+
+Right after `bootstrap.py` the monitoring tables are empty, so most dashboard tabs show nothing. Run the seed script to inject 14 days of realistic synthetic data (usage trends, feedback, eval history, alerts, interaction quality flags):
+
+```bash
+SNOWFLAKE_CONNECTION_NAME=COCO_demo_connection python demo/seed_dashboard_data.py
+```
+
+Options:
+- `--days 14` — how much history to generate (default 14)
+- `--env dev` — environment tag (default `dev`)
+- `--no-clean` — append without truncating
+
+The script is idempotent. Re-run anytime to refresh the demo state.
+
+**After running, all 6 dashboard tabs render:** Overview, Evaluations, Interaction Quality, Feedback, Token Costs, Alerts.
+
+---
+
+## Schedule Profiles — Demo vs Production
+
+Task schedules live in [config/schedules.yaml](../config/schedules.yaml) with two profiles:
+
+- `prod` — realistic daily/weekly cadence
+- `demo` — every ~15 minutes so graphs refresh live during a demo
+
+Switch profiles without redeploying:
+
+```bash
+# Dry-run first to see what would change
+SNOWFLAKE_CONNECTION_NAME=COCO_demo_connection python setup/switch_schedule.py --profile demo --dry-run
+
+# Flip to demo cadence
+SNOWFLAKE_CONNECTION_NAME=COCO_demo_connection python setup/switch_schedule.py --profile demo
+
+# Flip back after the demo
+SNOWFLAKE_CONNECTION_NAME=COCO_demo_connection python setup/switch_schedule.py --profile prod
+```
+
+The switcher is idempotent — re-running with the same profile prints `OK already on ...` and makes no changes.
 
 ---
 
