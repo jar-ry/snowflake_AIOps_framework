@@ -77,7 +77,7 @@ SELECT
     SUM(COALESCE(cache_read_tokens, 0))                 AS total_cache_read_tokens,
     MAX(step_number)                                    AS max_step_number,
     COUNT(DISTINCT tool_selected)                       AS distinct_tools_used,
-    ARRAY_AGG(DISTINCT tool_selected) WITHIN GROUP (ORDER BY step_number) AS tools_used
+    ARRAY_AGG(tool_selected) WITHIN GROUP (ORDER BY step_number) AS tools_used
 FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
 WHERE span_name LIKE 'ReasoningAgentStepPlanning%'
    OR span_name LIKE 'CodingAgent.Step%'
