@@ -28,4 +28,91 @@ llm:
   analyst_model: default
 
 pricing:
-  credits_per_million_tokens: 1.0
+  default_input_credits_per_million: 1.0
+  default_output_credits_per_million: 1.0
+  models:
+    claude-3-7-sonnet:
+      input_credits_per_million: 1.77
+      output_credits_per_million: 8.87
+      cache_write_credits_per_million: 2.22
+      cache_read_credits_per_million: 0.18
+    claude-4-opus:
+      input_credits_per_million: 8.87
+      output_credits_per_million: 44.34
+      cache_write_credits_per_million: 11.09
+      cache_read_credits_per_million: 0.89
+    claude-4-sonnet:
+      input_credits_per_million: 1.77
+      output_credits_per_million: 8.87
+      cache_write_credits_per_million: 2.22
+      cache_read_credits_per_million: 0.18
+    claude-haiku-4-5:
+      input_credits_per_million: 0.65
+      output_credits_per_million: 3.25
+      cache_write_credits_per_million: 0.81
+      cache_read_credits_per_million: 0.06
+    claude-opus-4-5:
+      input_credits_per_million: 3.25
+      output_credits_per_million: 16.26
+      cache_write_credits_per_million: 4.07
+      cache_read_credits_per_million: 0.33
+    claude-opus-4-6:
+      input_credits_per_million: 3.25
+      output_credits_per_million: 16.26
+      cache_write_credits_per_million: 4.07
+      cache_read_credits_per_million: 0.33
+    claude-opus-4-7:
+      input_credits_per_million: 3.25
+      output_credits_per_million: 16.26
+      cache_write_credits_per_million: 4.07
+      cache_read_credits_per_million: 0.33
+    claude-sonnet-4-5:
+      input_credits_per_million: 1.95
+      output_credits_per_million: 9.76
+      cache_write_credits_per_million: 2.44
+      cache_read_credits_per_million: 0.20
+    claude-sonnet-4-6:
+      input_credits_per_million: 1.95
+      output_credits_per_million: 9.76
+      cache_write_credits_per_million: 2.44
+      cache_read_credits_per_million: 0.20
+    gemini-2-5-flash:
+      input_credits_per_million: 0.18
+      output_credits_per_million: 1.48
+      cache_read_credits_per_million: 0.02
+    gemini-3.1-pro:
+      input_credits_per_million: 1.30
+      output_credits_per_million: 7.81
+      cache_read_credits_per_million: 0.13
+    openai-gpt-4.1:
+      input_credits_per_million: 1.30
+      output_credits_per_million: 5.20
+      cache_read_credits_per_million: 0.33
+    openai-gpt-5:
+      input_credits_per_million: 0.81
+      output_credits_per_million: 6.51
+      cache_read_credits_per_million: 0.08
+    openai-gpt-5-mini:
+      input_credits_per_million: 0.16
+      output_credits_per_million: 1.30
+      cache_read_credits_per_million: 0.02
+    openai-gpt-5.1:
+      input_credits_per_million: 0.81
+      output_credits_per_million: 6.51
+      cache_read_credits_per_million: 0.08
+    openai-gpt-5.2:
+      input_credits_per_million: 1.14
+      output_credits_per_million: 9.11
+      cache_read_credits_per_million: 0.11
+    openai-gpt-5.4:
+      input_credits_per_million: 1.63
+      output_credits_per_million: 9.76
+      cache_read_credits_per_million: 0.16
+    openai-gpt-5.5:
+      input_credits_per_million: 3.25
+      output_credits_per_million: 19.50
+      cache_read_credits_per_million: 0.33
+    openai-gpt-5.5-long-context:
+      input_credits_per_million: 6.50
+      output_credits_per_million: 29.25
+      cache_read_credits_per_million: 0.65

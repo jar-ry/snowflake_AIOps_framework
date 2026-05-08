@@ -43,7 +43,18 @@ BEGIN
         COALESCE(SUM(input_tokens), 0)                                               AS total_input_tokens,
         COALESCE(SUM(output_tokens), 0)                                              AS total_output_tokens,
         COALESCE(SUM(total_tokens), 0)                                               AS total_tokens,
-        COALESCE(SUM(total_tokens), 0) / 1000000.0 * 1.0                           AS estimated_credits, -- credits_per_million_tokens from config/environments.yaml
+        SUM(CASE                                                                        -- Per-model pricing (AI Credits per 1M tokens) from config/environments.yaml
+            WHEN model_used = 'claude-opus-4-7' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-opus-4-6' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-opus-4-5' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-4-opus' THEN COALESCE(input_tokens,0)/1000000.0*8.87 + COALESCE(output_tokens,0)/1000000.0*44.34
+            WHEN model_used = 'claude-4-sonnet' THEN COALESCE(input_tokens,0)/1000000.0*1.77 + COALESCE(output_tokens,0)/1000000.0*8.87
+            WHEN model_used = 'claude-3-7-sonnet' THEN COALESCE(input_tokens,0)/1000000.0*1.77 + COALESCE(output_tokens,0)/1000000.0*8.87
+            WHEN model_used = 'claude-sonnet-4-5' THEN COALESCE(input_tokens,0)/1000000.0*1.95 + COALESCE(output_tokens,0)/1000000.0*9.76
+            WHEN model_used = 'claude-sonnet-4-6' THEN COALESCE(input_tokens,0)/1000000.0*1.95 + COALESCE(output_tokens,0)/1000000.0*9.76
+            WHEN model_used = 'claude-haiku-4-5' THEN COALESCE(input_tokens,0)/1000000.0*0.65 + COALESCE(output_tokens,0)/1000000.0*3.25
+            ELSE COALESCE(input_tokens,0)/1000000.0*1.0 + COALESCE(output_tokens,0)/1000000.0*1.0
+        END)                                                                         AS estimated_credits,
         AVG(planning_duration_ms)                                                    AS avg_latency_ms,
         APPROX_PERCENTILE(planning_duration_ms, 0.5)                                 AS p50_latency_ms,
         APPROX_PERCENTILE(planning_duration_ms, 0.95)                                AS p95_latency_ms,

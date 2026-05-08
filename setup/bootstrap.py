@@ -223,7 +223,23 @@ def create_tasks_directly(cur, schedule_profile="demo"):
 
     schedules = load_schedule_config(schedule_profile)
     config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
-    credits_per_m = config.get("pricing", {}).get("credits_per_million_tokens", 1.0)
+    pricing = config.get("pricing", {})
+    default_in = pricing.get("default_input_credits_per_million", 1.0)
+    default_out = pricing.get("default_output_credits_per_million", 1.0)
+    models = pricing.get("models", {})
+
+    case_parts = []
+    for model, rates in models.items():
+        in_rate = rates["input_credits_per_million"]
+        out_rate = rates["output_credits_per_million"]
+        case_parts.append(
+            f"WHEN model_used = '{model}' THEN "
+            f"COALESCE(input_tokens,0)/1000000.0*{in_rate} + COALESCE(output_tokens,0)/1000000.0*{out_rate}"
+        )
+    case_parts.append(
+        f"ELSE COALESCE(input_tokens,0)/1000000.0*{default_in} + COALESCE(output_tokens,0)/1000000.0*{default_out}"
+    )
+    credits_expr = "CASE " + " ".join(case_parts) + " END"
 
     tasks = [
         ("TASK_DAILY_USAGE_AGGREGATION", schedules["usage_aggregation"]["schedule"], f"""
@@ -238,7 +254,7 @@ def create_tasks_directly(cur, schedule_profile="demo"):
                 COALESCE(agent_name, 'unknown'),
                 COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
                 COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
-                COALESCE(SUM(total_tokens),0)/1000000.0*{credits_per_m}, AVG(planning_duration_ms),
+                SUM({credits_expr}), AVG(planning_duration_ms),
                 APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
                 APPROX_PERCENTILE(planning_duration_ms,0.99), 0
             FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
@@ -389,7 +405,18 @@ def populate_dashboard(conn):
     print(f"{'='*60}")
 
     config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
-    credits_per_m = config.get("pricing", {}).get("credits_per_million_tokens", 1.0)
+    pricing = config.get("pricing", {})
+    default_in = pricing.get("default_input_credits_per_million", 1.0)
+    default_out = pricing.get("default_output_credits_per_million", 1.0)
+    models = pricing.get("models", {})
+    case_parts = []
+    for model, rates in models.items():
+        case_parts.append(
+            f"WHEN model_used = '{model}' THEN "
+            f"COALESCE(input_tokens,0)/1000000.0*{rates['input_credits_per_million']} + COALESCE(output_tokens,0)/1000000.0*{rates['output_credits_per_million']}"
+        )
+    case_parts.append(f"ELSE COALESCE(input_tokens,0)/1000000.0*{default_in} + COALESCE(output_tokens,0)/1000000.0*{default_out}")
+    credits_expr = "CASE " + " ".join(case_parts) + " END"
 
     import subprocess
     python_exe = sys.executable
@@ -510,7 +537,7 @@ SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'),
     COALESCE(agent_name, 'unknown'),
     COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
     COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
-    COALESCE(SUM(total_tokens),0)/1000000.0*{credits_per_m}, AVG(planning_duration_ms),
+    SUM({credits_expr}), AVG(planning_duration_ms),
     APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
     APPROX_PERCENTILE(planning_duration_ms,0.99), 0
 FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
