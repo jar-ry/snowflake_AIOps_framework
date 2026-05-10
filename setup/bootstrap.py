@@ -248,7 +248,7 @@ def create_tasks_directly(cur, schedule_profile="demo"):
                 total_requests, successful_requests, failed_requests,
                 total_input_tokens, total_output_tokens, total_tokens,
                 estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
-            SELECT CURRENT_DATE()-1, COALESCE(database_name, 'UNKNOWN'),
+            SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'),
                 CASE WHEN span_name LIKE 'ReasoningAgentStep%' OR span_name LIKE 'CodingAgent%' THEN 'cortex_agent'
                      WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst' ELSE 'other' END,
                 COALESCE(agent_name, 'unknown'),
@@ -258,7 +258,7 @@ def create_tasks_directly(cur, schedule_profile="demo"):
                 APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
                 APPROX_PERCENTILE(planning_duration_ms,0.99), 0
             FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
-            WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()
+            WHERE event_time >= DATEADD('hour',-24,CURRENT_TIMESTAMP())
               AND (span_name LIKE 'ReasoningAgentStepPlanning%' OR span_name LIKE 'CodingAgent.Step%' OR span_name ILIKE '%Analyst%')
             GROUP BY 1,2,3,4"""),
         ("TASK_DAILY_FEEDBACK_ANALYSIS", schedules["feedback_analysis"]["schedule"], """
