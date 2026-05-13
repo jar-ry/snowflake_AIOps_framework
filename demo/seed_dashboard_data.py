@@ -139,13 +139,13 @@ def seed_usage_metrics(cur, days, env):
             in_tokens = base_req * random.randint(600, 900)
             out_tokens = base_req * random.randint(200, 400)
             total_tokens = in_tokens + out_tokens
-            est_cost = round(total_tokens * 0.000003, 4)
+            est_credits = round(total_tokens * 0.000003, 4)
             avg_lat = random.uniform(1800, 4500)
             rows.append((
                 d.isoformat(), env, service_type, target,
                 base_req, success, failed,
                 in_tokens, out_tokens, total_tokens,
-                est_cost,
+                est_credits,
                 avg_lat,
                 avg_lat * 0.85, avg_lat * 1.6, avg_lat * 2.2,
                 random.randint(8, 25),
@@ -156,7 +156,7 @@ def seed_usage_metrics(cur, days, env):
            (metric_date, environment, service_type, agent_or_sv_name,
             total_requests, successful_requests, failed_requests,
             total_input_tokens, total_output_tokens, total_tokens,
-            estimated_cost_usd, avg_latency_ms,
+            estimated_credits, avg_latency_ms,
             p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         rows,
