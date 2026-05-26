@@ -92,6 +92,136 @@ def get_connection():
     return snowflake.connector.connect(connection_name=conn_name)
 
 
+def split_sql_statements(sql_clean):
+    """Split SQL text into statements, respecting:
+      - Single-quoted string literals (including '' escape)
+      - $$ dollar-quoted blocks (used for procedure bodies / agent specs)
+      - BEGIN...END scripting blocks (semicolons inside are internal separators)
+
+    A semicolon terminates a statement only when all three states are clear.
+    The outermost END; closes a BEGIN block and emits the whole block as one statement.
+    """
+    statements = []
+    current = []
+    i = 0
+    in_single_quote = False
+    in_dollar_quote = False
+    begin_depth = 0
+    n = len(sql_clean)
+
+    def _emit():
+        stmt = "".join(current).strip()
+        if stmt and not all(line.strip().startswith("--") or not line.strip() for line in stmt.split("\n")):
+            statements.append(stmt)
+
+    while i < n:
+        char = sql_clean[i]
+
+        # Skip -- line comments verbatim (they can contain ; and ')
+        if not in_single_quote and not in_dollar_quote and sql_clean[i:i+2] == "--":
+            while i < n and sql_clean[i] != "\n":
+                current.append(sql_clean[i])
+                i += 1
+            continue
+
+        # Skip /* ... */ block comments verbatim
+        if not in_single_quote and not in_dollar_quote and sql_clean[i:i+2] == "/*":
+            current.append(sql_clean[i])
+            current.append(sql_clean[i+1])
+            i += 2
+            while i < n and sql_clean[i:i+2] != "*/":
+                current.append(sql_clean[i])
+                i += 1
+            if i < n:
+                current.append(sql_clean[i])
+                current.append(sql_clean[i+1])
+                i += 2
+            continue
+
+        # Inside $$ ... $$: copy verbatim until closing $$
+        if in_dollar_quote:
+            current.append(char)
+            if sql_clean[i:i+2] == "$$":
+                current.append(sql_clean[i+1])
+                i += 2
+                in_dollar_quote = False
+            else:
+                i += 1
+            continue
+
+        # Open a dollar-quoted block
+        if sql_clean[i:i+2] == "$$":
+            in_dollar_quote = True
+            current.append(char)
+            current.append(sql_clean[i+1])
+            i += 2
+            continue
+
+        # Single-quoted string handling (with '' escape)
+        if char == "'" and not in_single_quote:
+            in_single_quote = True
+            current.append(char)
+            i += 1
+            continue
+
+        if char == "'" and in_single_quote:
+            if i + 1 < n and sql_clean[i+1] == "'":
+                current.append(char)
+                current.append(sql_clean[i+1])
+                i += 2
+            else:
+                in_single_quote = False
+                current.append(char)
+                i += 1
+            continue
+
+        if in_single_quote:
+            current.append(char)
+            i += 1
+            continue
+
+        # BEGIN / END tracking (only outside strings/dollar-quotes)
+        upper_remaining = sql_clean[i:].upper()
+        if re.match(r"\bBEGIN\b", upper_remaining):
+            begin_depth += 1
+            current.append(char)
+            i += 1
+            continue
+
+        if re.match(r"\bEND\s*;", upper_remaining) and begin_depth > 0:
+            # Consume "END" letters then the terminating ;
+            current.append(char)
+            i += 1
+            while i < n and sql_clean[i] != ";":
+                current.append(sql_clean[i])
+                i += 1
+            if i < n:
+                current.append(sql_clean[i])
+                i += 1
+            begin_depth -= 1
+            if begin_depth == 0:
+                _emit()
+                current = []
+            continue
+
+        # Plain statement terminator
+        if char == ";" and begin_depth == 0:
+            _emit()
+            current = []
+            i += 1
+            continue
+
+        current.append(char)
+        i += 1
+
+    # Flush remainder
+    tail = "".join(current).strip()
+    if tail and not all(line.strip().startswith("--") or not line.strip() for line in tail.split("\n")):
+        statements.append(tail)
+
+    return statements
+
+
 def run_sql_file(conn, filepath, description):
     print(f"\n{'='*60}")
     print(f"  {description}")
@@ -106,25 +236,7 @@ def run_sql_file(conn, filepath, description):
     sql_clean = re.sub(r"(?i)^\s*USE\s+DATABASE\s+\w+\s*;", "", sql_clean, flags=re.MULTILINE)
     sql_clean = re.sub(r"(?i)^\s*USE\s+SCHEMA\s+[\w.]+\s*;", "", sql_clean, flags=re.MULTILINE)
 
-    dollar_blocks = list(re.finditer(r"\$\$.*?\$\$", sql_clean, re.DOTALL))
-    dollar_ranges = [(m.start(), m.end()) for m in dollar_blocks]
-
-    def in_dollar_block(pos):
-        return any(s <= pos < e for s, e in dollar_ranges)
-
-    statements = []
-    current = []
-    for i, char in enumerate(sql_clean):
-        if char == ";" and not in_dollar_block(i):
-            stmt = "".join(current).strip()
-            if stmt and not all(line.strip().startswith("--") or not line.strip() for line in stmt.split("\n")):
-                statements.append(stmt)
-            current = []
-        else:
-            current.append(char)
-    last = "".join(current).strip()
-    if last and not all(line.strip().startswith("--") or not line.strip() for line in last.split("\n")):
-        statements.append(last)
+    statements = split_sql_statements(sql_clean)
 
     cur = conn.cursor()
     success = 0
