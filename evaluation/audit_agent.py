@@ -109,15 +109,37 @@ def ensure_eval_stage(conn, database: str, schema: str) -> str:
     return stage_name
 
 
-def ensure_eval_table(conn, database: str, schema: str, agent_name_short: str) -> str:
+def count_expected_questions() -> int:
+    """Return total question count across the 3 agent question-bank YAMLs."""
+    question_bank_dir = os.path.join(os.path.dirname(__file__), "..", "question_banks", "agent")
+    total = 0
+    for filename in ["answerable_questions.yaml", "out_of_scope.yaml", "adversarial_questions.yaml"]:
+        filepath = os.path.join(question_bank_dir, filename)
+        if not os.path.exists(filepath):
+            continue
+        with open(filepath, "r") as f:
+            data = yaml.safe_load(f) or {}
+        total += len(data.get("questions", []) or [])
+    return total
+
+
+def ensure_eval_table(conn, database: str, schema: str, agent_name_short: str, force_refresh: bool = False) -> str:
     table_name = f"{database}.{schema}.{agent_name_short}_EVAL_DATA"
+    expected_count = count_expected_questions()
 
     rows = execute_sql(conn, f"SELECT COUNT(*) AS cnt FROM {table_name}")
     if rows and not rows[0].get("error"):
         count = rows[0].get("CNT", 0)
-        if count > 0:
-            print(f"  Eval table already exists with {count} rows: {table_name}")
-            return table_name
+        if count > 0 and not force_refresh:
+            if count == expected_count:
+                print(f"  Eval table already exists with {count} rows (matches YAML): {table_name}")
+                return table_name
+            print(
+                f"  WARNING: eval table has {count} rows but YAMLs define {expected_count}. "
+                f"Rebuilding {table_name} to pick up question bank changes."
+            )
+        elif force_refresh:
+            print(f"  --force-refresh: rebuilding {table_name} (had {count} rows)")
 
     execute_sql(conn, f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
@@ -125,6 +147,7 @@ def ensure_eval_table(conn, database: str, schema: str, agent_name_short: str) -
             ground_truth VARIANT
         )
     """)
+    execute_sql(conn, f"TRUNCATE TABLE IF EXISTS {table_name}")
 
     question_bank_dir = os.path.join(os.path.dirname(__file__), "..", "question_banks", "agent")
     insert_count = 0
@@ -291,10 +314,14 @@ def check_evaluation_status(conn, run_name: str, stage_name: str, config_filenam
     terminal_statuses = {
         "COMPLETED", "PARTIALLY_COMPLETED", "CANCELLED",
         "INVOCATION_PARTIALLY_COMPLETED",
+        "FAILED", "ERROR", "INVOCATION_FAILED",
     }
+    failure_statuses = {"FAILED", "ERROR", "INVOCATION_FAILED"}
+    fatal_error_markers = ("does not exist", "not authorized", "compilation error")
 
     start_time = time.time()
     poll_interval = 30
+    consecutive_errors = 0
 
     while True:
         elapsed = time.time() - start_time
@@ -303,14 +330,29 @@ def check_evaluation_status(conn, run_name: str, stage_name: str, config_filenam
 
         result = execute_sql(conn, sql)
         if result and not result[0].get("error"):
+            consecutive_errors = 0
             current_status = result[0].get("STATUS", "UNKNOWN")
             print(f"  Status: {current_status} ({int(elapsed)}s elapsed)")
+
+            if current_status in failure_statuses:
+                print(f"  FAILURE DETAILS: {json.dumps(result[0], default=str, indent=2)}")
+                return {"status": current_status, "details": result[0]}
 
             if current_status in terminal_statuses:
                 return {"status": current_status, "details": result[0]}
         else:
             error_msg = result[0].get("error", "Unknown error") if result else "No result"
             print(f"  Status check error: {error_msg}")
+            consecutive_errors += 1
+
+            # Fail fast on fatal errors (non-existent agent, auth, compilation)
+            if any(m in error_msg.lower() for m in fatal_error_markers):
+                print(f"  FATAL: status check returned non-transient error; aborting.")
+                return {"status": "FAILED", "message": error_msg}
+
+            # If we see 3 consecutive unknown errors, also bail
+            if consecutive_errors >= 3:
+                return {"status": "FAILED", "message": f"3 consecutive status check errors; last: {error_msg}"}
 
         time.sleep(poll_interval)
 
@@ -349,6 +391,7 @@ def run_agent_audit(
     git_sha: str = "",
     git_branch: str = "",
     timeout: int = 600,
+    force_refresh: bool = False,
 ) -> dict:
     if metrics is None:
         metrics = ["answer_correctness", "logical_consistency", "safety", "groundedness", "execution_efficiency"]
@@ -377,7 +420,7 @@ def run_agent_audit(
     print(f"{'='*70}")
 
     print(f"\nStep 1: Preparing evaluation table...")
-    table_name = ensure_eval_table(conn, database, schema, agent_name_short)
+    table_name = ensure_eval_table(conn, database, schema, agent_name_short, force_refresh=force_refresh)
 
     print(f"\nStep 2: Generating evaluation config (with inline dataset block)...")
     dataset_name = f"{agent_name_short}_EVALSET_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -444,8 +487,10 @@ def run_agent_audit(
         passed = overall_avg * 100 >= accuracy_threshold
 
         result["metric_averages"] = metric_averages
+        result["normalized_averages"] = {m: round(v, 3) for m, v in normalized_averages.items()}
         result["overall_average"] = round(overall_avg, 3)
-        result["accuracy_threshold"] = accuracy_threshold,
+        result["overall_pct"] = round(overall_avg * 100, 1)
+        result["accuracy_threshold"] = accuracy_threshold
         result["passed_threshold"] = passed
         result["total_records"] = len(eval_results)
         result["low_score_count"] = len(low_scores)
@@ -466,12 +511,17 @@ def run_agent_audit(
         print(f"{'='*70}")
         print(f"Status:           COMPLETED")
         print(f"Total Records:    {result['total_records']}")
-        print(f"Overall Average:  {result['overall_average']:.3f}")
+        print(f"Overall:          {result['overall_pct']:.1f}%")
         print(f"Threshold:        {accuracy_threshold}%")
         print(f"Result:           {'PASSED' if passed else 'FAILED'}")
         print(f"\nMetric Averages:")
         for metric, avg in metric_averages.items():
-            print(f"  {metric:25s}: {avg:.3f}")
+            scale = CUSTOM_METRIC_SCALES.get(metric, 1)
+            if scale > 1:
+                norm = normalized_averages[metric]
+                print(f"  {metric:25s}: {avg:.3f}  (normalized: {norm:.3f}, scale 0-{scale})")
+            else:
+                print(f"  {metric:25s}: {avg:.3f}")
         if result.get("snowsight_url"):
             print(f"\nSnowsight: {result['snowsight_url']}")
         if low_scores:
@@ -502,6 +552,8 @@ def main():
     parser.add_argument("--git-sha", default="")
     parser.add_argument("--git-branch", default="")
     parser.add_argument("--timeout", type=int, default=600, help="Timeout in seconds for evaluation")
+    parser.add_argument("--force-refresh", action="store_true",
+                        help="Force rebuild of the eval table from YAML question banks regardless of existing row count")
     parser.add_argument("--output", "-o", default="", help="Output JSON file path")
     args = parser.parse_args()
 
@@ -513,6 +565,7 @@ def main():
         git_sha=args.git_sha,
         git_branch=args.git_branch,
         timeout=args.timeout,
+        force_refresh=args.force_refresh,
     )
 
     if args.output:
