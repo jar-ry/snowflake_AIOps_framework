@@ -22,6 +22,10 @@ profiles:
         name: TASK_WEEKLY_AGENT_EVAL
         schedule: "USING CRON 0 5 * * 0 UTC"
         description: "Agent smoke test every Sunday at 5am UTC"
+      interaction_quality:
+        name: TASK_DAILY_INTERACTION_QUALITY
+        schedule: "USING CRON 30 2 * * * UTC"
+        description: "Daily scan of agent interactions for quality issues at 2:30am UTC"
 
   demo:
     description: "Demo schedule — frequent runs (every 15 min) to quickly populate dashboard graphs"
@@ -46,3 +50,7 @@ profiles:
         name: TASK_WEEKLY_AGENT_EVAL
         schedule: "USING CRON */15 * * * * UTC"
         description: "Agent eval every 15 minutes"
+      interaction_quality:
+        name: TASK_DAILY_INTERACTION_QUALITY
+        schedule: "USING CRON */15 * * * * UTC"
+        description: "Interaction quality scan every 15 minutes"
