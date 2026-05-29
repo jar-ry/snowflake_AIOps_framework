@@ -8,7 +8,7 @@
 
 All cost in this framework is denominated in **Snowflake AI Credits**, not US dollars. The monitoring schema stores cost in the `estimated_credits` column ([setup/07_monitoring_tables.sql](../../setup/07_monitoring_tables.sql)), computed from real per-model token counts using the rate table in the `pricing:` block of [config/environments.yaml](../../config/environments.yaml).
 
-Dollar cost depends on your Snowflake contract's credit price, which varies by edition, region, and commitment. This document therefore quotes credits. A single, clearly-flagged USD illustration is included at the end.
+Dollar cost depends on your Snowflake contract's credit price, which varies by edition, region, and commitment. This document therefore quotes credits only.
 
 > Note: some demo materials loosely quote figures like "$5 per run" and "$1 per credit". Those are illustrative only and are not the canonical model. They are flagged for correction in the demo docs.
 

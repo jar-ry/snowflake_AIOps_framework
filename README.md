@@ -13,7 +13,6 @@ This README is the entry point and getting-started guide. Deeper reference and e
 | Document | Type | What it covers |
 |----------|------|----------------|
 | [docs/README.md](docs/README.md) | Index | Documentation map and conventions |
-| [Platform quirks](docs/reference/platform-quirks.md) | Reference | Snowflake limitations, workarounds, and current status |
 | [Cost model](docs/reference/cost-model.md) | Reference | How evaluation cost is computed in AI Credits, with worked examples |
 | [Pillar 1: Input governance](docs/explanation/pillar-1-input-governance.md) | Explanation | What the semantic view audit does today and where it is headed |
 
@@ -272,7 +271,7 @@ ai_evaluation_framework/
 │   └── market_positioning.md          # Market positioning & differentiation
 ├── docs/                              # Reference & explanation docs (Diátaxis)
 │   ├── README.md                      # Documentation index / map
-│   ├── reference/                     # Lookup-style: platform quirks, cost model
+│   ├── reference/                     # Lookup-style: cost model
 │   └── explanation/                   # Design & intent: input governance
 ├── requirements.txt                   # Python dependencies
 ├── AGENT.md                           # CoCo agent instructions
@@ -375,7 +374,7 @@ PR Opened
 PR Opened
   │
   └── Job 1: Native Snowflake GPA Evaluation
-      ├── Deploy agent to TEST
+      ├── Deploy agent to DEV
       └── audit_agent.py (EXECUTE_AI_EVALUATION with GPA metrics)
            │
       Post results as PR comment
@@ -410,7 +409,7 @@ Commits DDL to Git (dev branch)
         ▼
 Opens PR to main ──▶ GitHub Actions triggers CI:
         │               1. Run SV best practices audit
-        │               2. Deploy SV to TEST
+        │               2. Deploy SV to DEV
         │               3. Run question bank evaluation
         │               4. Post combined audit + eval results to PR
         │
@@ -425,7 +424,7 @@ Reviewer checks results:
         ▼
 Merge to main ──▶ GitHub Actions triggers CD:
                     1. Run audit gate (block on CRITICAL/ERROR)
-                    2. Final evaluation on TEST
+                    2. Final evaluation on DEV
                     3. Deploy to PROD (if both pass)
                     4. Log results to RETAIL_AI_EVAL
 ```
@@ -725,7 +724,7 @@ cd monitoring && snow streamlit deploy --replace
 | **Token Costs** | `V_TOKEN_COST_TREND` | Cost by service, token volume, latency avg vs P95 |
 | **Alerts** | `V_ACTIVE_ALERTS`, `ALERT_HISTORY` | Active alert cards with severity, full alert history table |
 
-**Sidebar filters:** Environment (All/PROD/TEST/DEV), days back (7-90).
+**Sidebar filters:** Environment (All/PROD/DEV), days back (7-90).
 
 Configure Snowflake connection in `.streamlit/secrets.toml`:
 ```toml

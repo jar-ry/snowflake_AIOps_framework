@@ -8,7 +8,6 @@ __pycache__/
 *.json
 !config/**/*.json
 !question_banks/**/*.json
-!.markdownlint.json
 
 # SiS deploy output
 monitoring/output/
