@@ -1,6 +1,6 @@
 # Platform quirks
 
-> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, operators | Related: [#8](https://github.com/jar-ry/snowflake_AIOps_framework/issues/8), [#19](https://github.com/jar-ry/snowflake_AIOps_framework/issues/19)
+> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, operators
 
 **Purpose.** A single source of truth for the Snowflake platform limitations this framework has encountered, the workarounds applied, and each item's current status. Review this list when something behaves unexpectedly, and retire items here when the platform fixes them upstream.
 
@@ -40,7 +40,7 @@ Each quirk lists: the symptom, the workaround, where it is handled in the codeba
 - **Symptom.** Running `bootstrap.py` with a connection whose default role is, for example, `SECURITYADMIN` fails at the first step with `Insufficient privileges to operate on account ... must have CREATE WAREHOUSE granted`.
 - **Workaround.** Run bootstrap with a role that can create warehouses (for example `ACCOUNTADMIN`), or set the connection's default role accordingly: `ALTER USER <user> SET DEFAULT_ROLE = ACCOUNTADMIN`.
 - **Where handled.** Bootstrap creates the warehouse in `main()` before any SQL file runs, so the active role at connection time must already have the privilege.
-- **Status.** Active. Document this in customer onboarding (see [#22](https://github.com/jar-ry/snowflake_AIOps_framework/issues/22)).
+- **Status.** Active. Document this in customer onboarding.
 
 ## Partial
 
@@ -64,14 +64,14 @@ Each quirk lists: the symptom, the workaround, where it is handled in the codeba
 
   These weekly tasks have not been independently verified since the spec change and may still hit the original limitation.
 - **Status.** Partial. Resolved for the eval and REST paths; unverified for the weekly `DATA_AGENT_RUN` smoke tests.
-- **Tracking.** [#8](https://github.com/jar-ry/snowflake_AIOps_framework/issues/8) remains open as the upstream-watch and weekly-path verification tracker.
+- **Tracking.** This issue remains open as the upstream-watch and weekly-path verification tracker.
 
 ## Resolved
 
 ### 6. `SNOWFLAKE.CORTEX.COMPLETE('analyst', ...)` is deprecated
 
 - **Symptom.** Calling `SNOWFLAKE.CORTEX.COMPLETE('analyst', ...)` returns "Model analyst is unavailable".
-- **Resolution.** The semantic-view evaluation path was migrated to the Cortex Agent REST API. `call_cortex_analyst` in [evaluation/utils.py](../../evaluation/utils.py) now routes through `call_cortex_agent` (REST). This was fixed in commit `d301b35` and closed [#13](https://github.com/jar-ry/snowflake_AIOps_framework/issues/13).
+- **Resolution.** The semantic-view evaluation path was migrated to the Cortex Agent REST API. `call_cortex_analyst` in [evaluation/utils.py](../../evaluation/utils.py) now routes through `call_cortex_agent` (REST). This was fixed in commit `d301b35`.
 - **Caveat.** The deprecated call still exists in two non-eval paths: the `SP_WEEKLY_SV_EVAL` stored proc ([setup/bootstrap.py](../../setup/bootstrap.py), [setup/08_monitoring_tasks.sql](../../setup/08_monitoring_tasks.sql)) and [monitoring/health_check.py](../../monitoring/health_check.py). These would fail if executed and should be migrated in a follow-up.
 - **Status.** Resolved for the eval path; a follow-up is warranted for the weekly SV smoke test and health check.
 

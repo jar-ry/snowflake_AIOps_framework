@@ -1,6 +1,6 @@
 # Pillar 1: Input governance
 
-> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, solution architects, customers | Related: [#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11), [#20](https://github.com/jar-ry/snowflake_AIOps_framework/issues/20)
+> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, solution architects, customers
 
 **Purpose.** Explain what Pillar 1 (semantic view auditing) does today, the difference between structural and domain-aware validation, and why closing that gap is the framework's strategic differentiator.
 
@@ -42,14 +42,14 @@ Today, therefore, Pillar 1 is best described as a **structural linter for semant
 
 ## Where it is headed
 
-The strategic vision — tracked in [#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11) — is **AI-generated, domain-aware audit rules**. An LLM reads the semantic view, infers its domain, and generates granular validation rules tailored to that specific model. Those rules are generated once (pre-CI), committed to the repository as a reviewable artifact, and then applied deterministically in CI at no per-run LLM cost.
+The strategic vision is **AI-generated, domain-aware audit rules**. An LLM reads the semantic view, infers its domain, and generates granular validation rules tailored to that specific model. Those rules are generated once (pre-CI), committed to the repository as a reviewable artifact, and then applied deterministically in CI at no per-run LLM cost.
 
-This is the layer that turns Pillar 1 from a structural linter into something no competitor offers: validation that understands the domain semantics of the specific model the agent reads from. See [#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11) for the design and the honest assessment of its risks (chiefly, rule hallucination, mitigated by requiring human review of generated rules before they gate CI).
+This is the layer that turns Pillar 1 from a structural linter into something no competitor offers: validation that understands the domain semantics of the specific model the agent reads from. The honest assessment of its risks: chiefly, rule hallucination, mitigated by requiring human review of generated rules before they gate CI.
 
 ## Summary
 
 - **Today:** six structural rules, zero LLM cost, domain-agnostic. A solid floor.
 - **Gap:** no understanding of business meaning.
-- **Vision ([#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11)):** AI-generated domain-aware rules, generated pre-CI, reviewed by humans, applied deterministically.
+- **Vision:** AI-generated domain-aware rules, generated pre-CI, reviewed by humans, applied deterministically.
 
 When describing Pillar 1 to customers, be precise: we audit the structural health of the inputs today, and the domain-aware layer is the roadmap differentiator — not a current capability.

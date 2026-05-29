@@ -1,6 +1,6 @@
 # Cost model
 
-> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, solution architects, customers | Related: [#23](https://github.com/jar-ry/snowflake_AIOps_framework/issues/23)
+> Status: Stable | Last reviewed: 2026-05-26 | Audience: Engineers, solution architects, customers
 
 **Purpose.** Explain how the framework's evaluation cost is computed, in Snowflake AI Credits, so teams can estimate and budget spend before adopting it.
 
@@ -19,7 +19,7 @@ The framework has two evaluation loops with very different cost characteristics:
 | Loop | What it is | Cost driver | Approximate cost |
 | --- | --- | --- | --- |
 | Loop 1 (CI eval) | Agent run against a question bank, scored by an LLM judge | LLM tokens (agent + judge) | The subject of this document |
-| Loop 2 (runtime monitoring) | Deterministic SQL rules over `ai_observability_events` | Warehouse compute only | Effectively free; no LLM tokens |
+| Loop 2 (runtime monitoring) | Deterministic SQL rules over `ai_observability_events` | Warehouse compute only | No LLM tokens; cost is limited to short daily task runs on the configured warehouse |
 
 Loop 2 is pure SQL aggregation on an XSMALL warehouse running short daily tasks. Its cost is negligible and not modeled here. The rest of this document is about Loop 1.
 
@@ -102,14 +102,14 @@ All figures are estimates in AI Credits, assuming `claude-opus-4-7`, five metric
 
 ## Levers to reduce cost
 
-- **Pre-flight smoke check** ([#18](https://github.com/jar-ry/snowflake_AIOps_framework/issues/18)). Run a 3-question smoke set before the full bank. A broken agent aborts at roughly `0.3` credits instead of running the full bank. This is the single biggest saver on iterative feature branches.
+- **Pre-flight smoke check.** Run a 3-question smoke set before the full bank. A broken agent aborts at roughly `0.3` credits instead of running the full bank. This is the single biggest saver on iterative feature branches.
 - **Tiered question banks.** Run a small subset on feature-branch commits (advisory) and the full bank only on merge to main. Cuts feature-branch cost by the ratio of the subsets.
 - **Metric pruning.** Each metric is a judge call per question. Dropping a metric you do not need (for example `groundedness`) removes one judge call per question, reducing judge cost by roughly `1/M`.
 - **Cheaper judge model.** The judge model is configurable. A less expensive model (for example a Haiku-class model) lowers judge cost substantially, at some loss of judging nuance.
 
 ## Architecture note: why per-record, not batched
 
-The framework scores each (question, metric) pair as its own judge call. A batched alternative — one judge call scoring all answers for a metric — would cut judge tokens by roughly 30 percent. It was rejected because it loses per-question explainability (the `EVAL_CALLS` rationale per record), breaks the Snowsight Evaluations UI integration, and abandons the native `EXECUTE_AI_EVALUATION` API. The modest savings did not justify those losses. See the decision log in [#23](https://github.com/jar-ry/snowflake_AIOps_framework/issues/23).
+The framework scores each (question, metric) pair as its own judge call. A batched alternative — one judge call scoring all answers for a metric — would cut judge tokens by roughly 30 percent. It was rejected because it loses per-question explainability (the `EVAL_CALLS` rationale per record), breaks the Snowsight Evaluations UI integration, and abandons the native `EXECUTE_AI_EVALUATION` API. The modest savings did not justify those losses.
 
 ## Illustrative USD conversion (not authoritative)
 

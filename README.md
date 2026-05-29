@@ -302,7 +302,7 @@ Inspired by CoCo's semantic view audit skill, checks for:
 
 Exit code: 0 (pass, no CRITICAL/ERROR findings) or 1 (fail).
 
-> These checks are structural-only, not domain-aware: they validate shape, naming, types, and completeness, not business meaning. The roadmap differentiator is AI-generated domain-aware rules ([#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11)). See [docs/explanation/pillar-1-input-governance.md](docs/explanation/pillar-1-input-governance.md).
+> These checks are structural-only, not domain-aware: they validate shape, naming, types, and completeness, not business meaning. The roadmap differentiator is AI-generated domain-aware rules. See [docs/explanation/pillar-1-input-governance.md](docs/explanation/pillar-1-input-governance.md).
 
 **Agent Native Evaluation (GPA Framework)** (`audit_agent.py`):
 
@@ -491,7 +491,7 @@ Thresholds increase from DEV → PROD to support iterative improvement.
 Evaluation cost is measured in **Snowflake AI Credits** (not US dollars; dollar cost depends on your contract's credit price). There are two cost profiles:
 
 - **Loop 1 (CI evaluation)** — the agent runs against a question bank and an LLM judge scores each answer. This consumes LLM tokens and is the main cost driver. As a rough guide, a single full evaluation run of a 35-question bank with five metrics is on the order of a few AI Credits.
-- **Loop 2 (runtime monitoring)** — deterministic SQL rules over `ai_observability_events`. No LLM tokens; effectively free apart from short daily warehouse compute.
+- **Loop 2 (runtime monitoring)** — deterministic SQL rules over `ai_observability_events`. No LLM tokens; cost is limited to short daily task runs on the configured warehouse.
 
 Actual cost is measured per request and stored in the `estimated_credits` column of `RETAIL_AI_EVAL.MONITORING.USAGE_METRICS`, computed from the per-model rates in [config/environments.yaml](config/environments.yaml).
 
