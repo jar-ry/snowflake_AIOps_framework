@@ -9,7 +9,6 @@
 | Mode | Directory | Answers the question | When to read |
 | --- | --- | --- | --- |
 | Tutorials | `tutorials/` | "Can you teach me?" | First time using the framework, learning-oriented |
-| How-to guides | `how-to/` | "How do I do X?" | You have a specific task to accomplish |
 | Reference | `reference/` | "What are the exact details?" | You need precise, lookup-style information |
 | Explanation | `explanation/` | "Why does it work this way?" | You want to understand the design and tradeoffs |
 
@@ -19,7 +18,6 @@ The root [README](../README.md) remains the project entry point and getting-star
 
 Information-oriented, lookup-style material.
 
-- [Platform quirks](reference/platform-quirks.md) — Snowflake platform limitations the framework works around, their workarounds, and current status.
 - [Cost model](reference/cost-model.md) — how evaluation cost is computed in Snowflake AI Credits, the formula, and worked examples.
 
 ## Explanation
@@ -27,10 +25,6 @@ Information-oriented, lookup-style material.
 Understanding-oriented material about design and intent.
 
 - [Pillar 1: Input governance](explanation/pillar-1-input-governance.md) — what the semantic view audit does today, the structural-vs-domain gap, and where it is headed.
-
-## How-to guides
-
-Task-oriented recipes. No guides have been migrated here yet — operational how-tos currently live in the root [README](../README.md) and [demo/](../demo/) runbooks. New task-specific guides should be added here.
 
 ## Tutorials
 

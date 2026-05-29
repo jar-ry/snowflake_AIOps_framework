@@ -63,9 +63,10 @@ Using the assumptions above with `claude-opus-4-7` and the default five metrics 
 An evaluation runs on every CI trigger that touches a watched path (`agents/`, `semantic_views/`, `question_banks/`, `evaluation/`, `config/thresholds.yaml`). Across a feature's life:
 
 ```text
+E = number of promotion environments (e.g. DEV + STAGING + PROD = 3)
+
 total_eval_runs = feature_branch_commits_touching_watched_paths
-                + 1   (merge to DEV)
-                + 1   (promote to PROD)
+                + E   (one eval per promotion gate)
 
 cost_credits = total_eval_runs
              x num_agents_changed
@@ -73,31 +74,31 @@ cost_credits = total_eval_runs
              x per_question_credits
 ```
 
-`per_question_credits` is approximately `0.096` for the default model and five metrics (see above). `num_agents_changed` is usually 1 (a PR typically changes one agent); multi-agent PRs multiply accordingly.
+`per_question_credits` is approximately `0.096` for the default model and five metrics (see above). `num_agents_changed` is usually 1 (a PR typically changes one agent); multi-agent PRs multiply accordingly. `E` depends on how many environments your pipeline promotes through — a minimal setup has 2 (DEV + PROD), while enterprise setups may have 3 or more (DEV + STAGING + PROD).
 
 ## Worked examples
 
-All figures are estimates in AI Credits, assuming `claude-opus-4-7`, five metrics, `per_question_credits` approximately `0.096`, and one agent changed per PR.
+All figures are estimates in AI Credits, assuming `claude-opus-4-7`, five metrics, `per_question_credits` approximately `0.096`, one agent changed per PR, and `E = 2` environments (DEV + PROD). Scale `E` for your pipeline.
 
 ### Small team
 
 - 1 agent, 20-question bank, ~3 commits per PR, 5 PRs per week
 - Per run: `20 x 0.096` = approximately `1.9` credits
-- Per PR: `(3 + 2) runs x 1.9` = approximately `9.6` credits
+- Per PR: `(3 + E) runs x 1.9` = `(3 + 2) x 1.9` = approximately `9.6` credits
 - **Per week: `5 x 9.6` = approximately 48 credits**
 
 ### Medium team
 
 - 5 agents (1 changed per PR), 35-question bank, ~4 commits per PR, 50 PRs per week
 - Per run: `35 x 0.096` = approximately `3.4` credits
-- Per PR: `(4 + 2) runs x 3.4` = approximately `20` credits
+- Per PR: `(4 + E) runs x 3.4` = `(4 + 2) x 3.4` = approximately `20` credits
 - **Per week: `50 x 20` = approximately 1,000 credits**
 
 ### Large team
 
 - 20 agents (1 changed per PR), 50-question bank, ~5 commits per PR, 200 PRs per week
 - Per run: `50 x 0.096` = approximately `4.8` credits
-- Per PR: `(5 + 2) runs x 4.8` = approximately `34` credits
+- Per PR: `(5 + E) runs x 4.8` = `(5 + 2) x 4.8` = approximately `34` credits
 - **Per week: `200 x 34` = approximately 6,720 credits**
 
 ## Levers to reduce cost
@@ -110,10 +111,6 @@ All figures are estimates in AI Credits, assuming `claude-opus-4-7`, five metric
 ## Architecture note: why per-record, not batched
 
 The framework scores each (question, metric) pair as its own judge call. A batched alternative — one judge call scoring all answers for a metric — would cut judge tokens by roughly 30 percent. It was rejected because it loses per-question explainability (the `EVAL_CALLS` rationale per record), breaks the Snowsight Evaluations UI integration, and abandons the native `EXECUTE_AI_EVALUATION` API. The modest savings did not justify those losses.
-
-## Illustrative USD conversion (not authoritative)
-
-Dollar cost is contract-specific. As a single illustration only: if your contract priced credits at, say, 3 USD per credit, the medium-team example (approximately 1,000 credits per week) would be on the order of 3,000 USD per week. Do not treat this rate as real — confirm your actual credit price with your Snowflake account team before quoting dollars.
 
 ## Measuring actuals
 
