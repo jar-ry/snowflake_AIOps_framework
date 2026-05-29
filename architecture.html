@@ -338,7 +338,6 @@
     border-top: 3px solid var(--snow-blue);
   }
   .env-box.dev { border-top-color: var(--green); }
-  .env-box.test { border-top-color: var(--orange); }
   .env-box.prod { border-top-color: var(--red); }
   .env-box.eval { border-top-color: var(--purple); }
   .env-box h4 {
@@ -410,7 +409,7 @@
 <section id="architecture">
   <div class="container">
     <h2><span class="num">01</span>High-Level Architecture</h2>
-    <p class="dim">The framework mirrors a software engineering lifecycle: develop in DEV, evaluate in TEST via CI, promote to PROD via CD — with automated audit gates, question-bank evaluation, and continuous monitoring.</p>
+    <p class="dim">The framework mirrors a software engineering lifecycle: develop in DEV, evaluate via CI, promote to PROD via CD — with automated audit gates, question-bank evaluation, and continuous monitoring.</p>
 
     <div class="arch-diagram">
       <svg viewBox="0 0 1100 620" xmlns="http://www.w3.org/2000/svg" fill="none">
@@ -493,7 +492,7 @@
         <line x1="360" y1="445" x2="400" y2="445" stroke="#C792EA" stroke-width="1" marker-end="url(#arrow)"/>
 
         <rect x="405" y="430" width="140" height="30" rx="6" fill="#0D2B45" stroke="#64FFDA" stroke-width="1"/>
-        <text x="475" y="450" text-anchor="middle" fill="#64FFDA" font-size="10" font-family="Inter,sans-serif">Final Eval (TEST)</text>
+        <text x="475" y="450" text-anchor="middle" fill="#64FFDA" font-size="10" font-family="Inter,sans-serif">Final Eval (DEV)</text>
         <line x1="545" y1="445" x2="585" y2="445" stroke="#C792EA" stroke-width="1" marker-end="url(#arrow)"/>
 
         <rect x="590" y="430" width="140" height="30" rx="6" fill="#0D2B45" stroke="#FF6B6B" stroke-width="1"/>
@@ -621,13 +620,13 @@
           <td><code>semantic_view_cd.yml</code></td>
           <td>Push to main (semantic_views/**)</td>
           <td><span class="tag tag-cd">CD</span></td>
-          <td>Audit gate → Final eval on TEST → Deploy to PROD</td>
+          <td>Audit gate → Final eval on DEV → Deploy to PROD</td>
         </tr>
         <tr>
           <td><code>agent_ci.yml</code></td>
           <td>PR to main (agents/**)</td>
           <td><span class="tag tag-ci">CI</span></td>
-          <td>Deploy agent to TEST → Native GPA eval → PR comment</td>
+          <td>Deploy agent to DEV → Native GPA eval → PR comment</td>
         </tr>
         <tr>
           <td><code>agent_cd.yml</code></td>
@@ -797,7 +796,6 @@
       <thead><tr><th>Environment</th><th>SV Accuracy</th><th>SV Easy</th><th>SV Hard</th><th>Agent Accuracy</th><th>Agent Adversarial</th></tr></thead>
       <tbody>
         <tr><td><span style="color:var(--green);">DEV</span></td><td>60%</td><td>80%</td><td>50%</td><td>65%</td><td>90%</td></tr>
-        <tr><td><span style="color:var(--orange);">TEST</span></td><td>75%</td><td>90%</td><td>65%</td><td>75%</td><td>95%</td></tr>
         <tr><td><span style="color:var(--red);">PROD</span></td><td>85%</td><td>95%</td><td>75%</td><td>85%</td><td>98%</td></tr>
       </tbody>
     </table>
@@ -808,7 +806,7 @@
 <section id="environments">
   <div class="container">
     <h2><span class="num">05</span>Snowflake Environments</h2>
-    <p class="dim">Four isolated Snowflake databases with identical schemas. DEV/TEST/PROD for the application; EVAL for cross-environment results storage.</p>
+    <p class="dim">Three isolated Snowflake databases with identical schemas. DEV/PROD for the application; EVAL for cross-environment results storage.</p>
 
     <div class="env-row">
       <div class="env-box dev">
@@ -1088,12 +1086,11 @@
 
     <h3>Permission Matrix</h3>
     <table>
-      <thead><tr><th>Role</th><th>DEV</th><th>TEST</th><th>PROD</th><th>EVAL</th></tr></thead>
+      <thead><tr><th>Role</th><th>DEV</th><th>PROD</th><th>EVAL</th></tr></thead>
       <tbody>
         <tr>
           <td><code>RETAIL_AI_ANALYST</code></td>
           <td><span class="role-full">Full (create SV)</span></td>
-          <td><span class="role-read">Read</span></td>
           <td><span class="role-read">Read</span></td>
           <td><span class="role-read">Read results</span></td>
         </tr>
@@ -1101,19 +1098,16 @@
           <td><code>RETAIL_AI_REVIEWER</code></td>
           <td><span class="role-full">Inherits Analyst</span></td>
           <td><span class="role-read">Read</span></td>
-          <td><span class="role-read">Read</span></td>
           <td><span class="role-read">Read results</span></td>
         </tr>
         <tr>
           <td><code>RETAIL_AI_DEPLOYER</code></td>
-          <td><span class="role-none">—</span></td>
           <td><span class="role-deploy">Deploy SV/Agent</span></td>
           <td><span class="role-deploy">Deploy SV/Agent</span></td>
           <td><span class="role-deploy">Write results</span></td>
         </tr>
         <tr>
           <td><code>RETAIL_AI_ADMIN</code></td>
-          <td><span class="role-full">Full</span></td>
           <td><span class="role-full">Full</span></td>
           <td><span class="role-full">Full</span></td>
           <td><span class="role-full">Full</span></td>

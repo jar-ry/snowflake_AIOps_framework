@@ -11,6 +11,12 @@ Performs the audit checks from the CoCo semantic view audit skill:
   6. Inconsistencies: conflicting definitions, overlapping filters/metrics
   7. Duplicates: redundant descriptions, instructions
 
+Note: these rules are structural-only, not domain-aware. They validate
+YAML/DDL shape, naming, types, and completeness -- not whether definitions
+are semantically correct for the domain (e.g. that a revenue metric must use
+SUM, or that order_date should be a time dimension). Domain-aware rule
+generation is tracked in issue #11. See docs/explanation/pillar-1-input-governance.md.
+
 Can run in two modes:
   - DDL mode (default): parses the CREATE SEMANTIC VIEW DDL file
   - Live mode (--live): introspects a deployed semantic view via DESCRIBE
