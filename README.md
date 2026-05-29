@@ -6,6 +6,19 @@ Built for data teams who want to **self-serve semantic view development** while 
 
 ---
 
+## Documentation
+
+This README is the entry point and getting-started guide. Deeper reference and explanation material lives in [docs/](docs/README.md), organized with the [Diátaxis](https://diataxis.fr/) framework:
+
+| Document | Type | What it covers |
+|----------|------|----------------|
+| [docs/README.md](docs/README.md) | Index | Documentation map and conventions |
+| [Platform quirks](docs/reference/platform-quirks.md) | Reference | Snowflake limitations, workarounds, and current status |
+| [Cost model](docs/reference/cost-model.md) | Reference | How evaluation cost is computed in AI Credits, with worked examples |
+| [Pillar 1: Input governance](docs/explanation/pillar-1-input-governance.md) | Explanation | What the semantic view audit does today and where it is headed |
+
+---
+
 ## Architecture
 
 ```
@@ -257,6 +270,10 @@ ai_evaluation_framework/
 │   ├── demo_runbook.md                # Step-by-step demo script
 │   ├── snowsight_walkthrough.md       # Snowsight UI walkthrough
 │   └── market_positioning.md          # Market positioning & differentiation
+├── docs/                              # Reference & explanation docs (Diátaxis)
+│   ├── README.md                      # Documentation index / map
+│   ├── reference/                     # Lookup-style: platform quirks, cost model
+│   └── explanation/                   # Design & intent: input governance
 ├── requirements.txt                   # Python dependencies
 ├── AGENT.md                           # CoCo agent instructions
 └── README.md                          # This file
@@ -284,6 +301,8 @@ Inspired by CoCo's semantic view audit skill, checks for:
 | Duplicates | Redundant descriptions across columns | MEDIUM |
 
 Exit code: 0 (pass, no CRITICAL/ERROR findings) or 1 (fail).
+
+> These checks are structural-only, not domain-aware: they validate shape, naming, types, and completeness, not business meaning. The roadmap differentiator is AI-generated domain-aware rules ([#11](https://github.com/jar-ry/snowflake_AIOps_framework/issues/11)). See [docs/explanation/pillar-1-input-governance.md](docs/explanation/pillar-1-input-governance.md).
 
 **Agent Native Evaluation (GPA Framework)** (`audit_agent.py`):
 
@@ -463,7 +482,20 @@ agent:
     adversarial_min_accuracy: 98  # Near-perfect on safety tests
 ```
 
-Thresholds increase from DEV → TEST → PROD to support iterative improvement.
+Thresholds increase from DEV → PROD to support iterative improvement.
+
+---
+
+## Cost
+
+Evaluation cost is measured in **Snowflake AI Credits** (not US dollars; dollar cost depends on your contract's credit price). There are two cost profiles:
+
+- **Loop 1 (CI evaluation)** — the agent runs against a question bank and an LLM judge scores each answer. This consumes LLM tokens and is the main cost driver. As a rough guide, a single full evaluation run of a 35-question bank with five metrics is on the order of a few AI Credits.
+- **Loop 2 (runtime monitoring)** — deterministic SQL rules over `ai_observability_events`. No LLM tokens; effectively free apart from short daily warehouse compute.
+
+Actual cost is measured per request and stored in the `estimated_credits` column of `RETAIL_AI_EVAL.MONITORING.USAGE_METRICS`, computed from the per-model rates in [config/environments.yaml](config/environments.yaml).
+
+For the full formula, token assumptions, worked examples (small/medium/large teams), and cost-reduction levers, see [docs/reference/cost-model.md](docs/reference/cost-model.md).
 
 ---
 
