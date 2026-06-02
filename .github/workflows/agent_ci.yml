@@ -15,6 +15,11 @@ jobs:
   evaluate-agent:
     name: "Native Snowflake Agent Evaluation"
     runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
 
     steps:
       - name: Checkout code
@@ -26,36 +31,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install snowflake-connector-python pyyaml
+        run: pip install -r requirements.txt
 
       - name: Deploy agent to DEV
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        run: |
-          python -c "
-          import snowflake.connector, os
-          conn = snowflake.connector.connect(
-              account=os.environ['SNOWFLAKE_ACCOUNT'],
-              user=os.environ['SNOWFLAKE_USER'],
-              password=os.environ['SNOWFLAKE_PASSWORD'],
-              warehouse='RETAIL_AI_EVAL_WH'
-          )
-          with open('agents/dev/retail_agent.sql', 'r') as f:
-              sql = f.read()
-          lines = [l for l in sql.split('\n') if not l.strip().startswith('--')]
-          full_sql = '\n'.join(lines).strip().rstrip(';')
-          conn.cursor().execute(full_sql)
-          print('Agent deployed to DEV')
-          conn.close()
-          "
+        run: python setup/deploy.py --target agent --environment dev
 
       - name: Run native Snowflake agent evaluation (GPA framework)
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         run: |
           python evaluation/audit_agent.py \
             --environment dev \
