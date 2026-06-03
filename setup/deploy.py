@@ -26,17 +26,18 @@ def _strip_sql_comments(sql: str) -> str:
 
 
 def deploy_agent(conn, environment: str) -> str:
-    path = os.path.join(PROJECT_ROOT, "agents", environment, "retail_agent.sql")
+    cfg = load_config()["environments"][environment]
+    path = os.path.join(PROJECT_ROOT, cfg["agent_sql_path"])
     with open(path) as f:
         sql = _strip_sql_comments(f.read())
     conn.cursor().execute(sql)
-    return path
+    return os.path.relpath(path, PROJECT_ROOT)
 
 
 def deploy_semantic_view(conn, environment: str) -> str:
     cfg = load_config()["environments"][environment]
     target = f"{cfg['database']}.{cfg.get('semantic_schema', cfg['schema'])}"
-    path = os.path.join(PROJECT_ROOT, "semantic_views", environment, "retail_analytics_sv.yaml")
+    path = os.path.join(PROJECT_ROOT, cfg["sv_yaml_path"])
     with open(path) as f:
         yaml_content = f.read()
     # Target schema is derived from config (validated env), yaml passed as a bind param.
