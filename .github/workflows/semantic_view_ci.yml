@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'semantic_views/**'
-      - 'question_banks/semantic_view/**'
+      - 'examples/retail/semantic_views/**'
+      - 'examples/retail/question_banks/semantic_view/**'
 
 permissions:
   contents: read
@@ -52,6 +52,7 @@ jobs:
     needs: [audit-semantic-view]
     runs-on: ubuntu-latest
     env:
+      AIOPS_INSTANCE: examples/retail
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}

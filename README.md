@@ -130,7 +130,7 @@ This README is the entry point and getting-started guide. Deeper reference and e
 ```bash
 pip install -r requirements.txt
 
-python setup/bootstrap.py
+python setup/bootstrap.py --example examples/retail
 ```
 
 This single command will:
@@ -166,21 +166,19 @@ The dashboard shows evaluation trends, feedback, token costs, health status, and
 ### Run Evaluations Locally
 
 ```bash
-# SV best practices audit (no Snowflake connection needed)
+# SV best practices audit (no Snowflake connection needed; uses the active instance's SV)
 python evaluation/audit_semantic_view.py \
-  --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
+  --environment dev \
   --output sv_audit.json
 
 # SV question bank evaluation (requires Snowflake connection)
 python evaluation/evaluate_semantic_view.py \
   --environment dev \
-  --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV \
   --output sv_eval.json
 
 # Agent native GPA evaluation (requires Snowflake connection)
 python evaluation/audit_agent.py \
   --environment dev \
-  --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
   --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
   --output agent_eval.json
 ```
@@ -197,13 +195,13 @@ gh repo create <repo-name> --private --source=. --push
 ```
 
 Then:
-- **Open a PR** touching `semantic_views/` or `agents/` → CI deploys to DEV, evaluates, posts results as PR comment
+- **Open a PR** touching `examples/retail/semantic_views/` or `examples/retail/agents/` → CI deploys to DEV, evaluates, posts results as PR comment
 - **Merge to main** → CD evaluates on DEV, then promotes to PROD if quality gates pass
 
 ### Bootstrap Options
 
 ```bash
-python setup/bootstrap.py                  # Full setup (recommended for first run)
+python setup/bootstrap.py --example examples/retail   # Full setup (recommended for first run)
 python setup/bootstrap.py --skip-sql       # Skip SQL (if already run)
 python setup/bootstrap.py --skip-deploy    # Skip SV/agent deployment
 python setup/bootstrap.py --skip-eval      # Skip first evaluation
@@ -216,60 +214,58 @@ python setup/bootstrap.py --skip-populate  # Skip dashboard population
 
 ```
 ai_evaluation_framework/
-├── setup/                              # Snowflake environment setup
-│   ├── bootstrap.py                   # One-command full setup script
-│   ├── deploy_dev.py                  # Deploy SV + agent to DEV only
-│   ├── 01_create_databases.sql        # DEV/PROD databases + eval tables
-│   ├── 02_create_tables.sql           # Retail schema (customers, orders, etc.)
-│   ├── 03_seed_data.sql               # 500 customers, 5000 orders, 100 products
+├── setup/                              # FRAMEWORK: domain-agnostic Snowflake setup
+│   ├── bootstrap.py                   # One-command setup (python setup/bootstrap.py --example examples/retail)
+│   ├── deploy.py                      # Deploy SV/agent to an env (config-driven, used by CI)
+│   ├── 01_create_databases.sql        # DEV/PROD/EVAL databases, schemas, eval result tables, warehouse
 │   ├── 04_rbac_setup.sql              # Analyst/Reviewer/Deployer/Admin roles
 │   ├── 05_observability_setup.sql     # Views over ai_observability_events
-│   ├── 06_eval_dataset_setup.sql      # Native eval datasets (OBJECT ground truth)
 │   ├── 07_monitoring_tables.sql       # Feedback, usage, health, alert tables
 │   ├── 08_monitoring_tasks.sql        # Scheduled Tasks (daily + weekly)
 │   ├── 09_monitoring_views.sql        # Trend views for Snowsight dashboards
 │   ├── 10_monitoring_alerts.sql       # Snowflake Alerts (7 alert types)
-│   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
-├── semantic_views/                     # Semantic View YAML by environment
-│   ├── dev/retail_analytics_sv.yaml
-│   └── prod/retail_analytics_sv.yaml
-├── agents/                             # Cortex Agent DDL by environment
-│   ├── dev/retail_agent.sql
-│   └── prod/retail_agent.sql
-├── question_banks/                     # Test question banks
-│   ├── semantic_view/
-│   │   ├── easy_questions.yaml         # 10 simple queries + ground truth SQL
-│   │   ├── hard_questions.yaml         # 10 complex queries + ground truth SQL
-│   │   └── ambiguous_questions.yaml    # 10 ambiguous questions (LLM-judged)
-│   └── agent/
-│       ├── answerable_questions.yaml   # 15 questions (10 should answer, 5 should not)
-│       ├── out_of_scope.yaml           # 10 out-of-scope questions
-│       └── adversarial_questions.yaml  # 10 adversarial/safety tests
-├── evaluation/                         # Evaluation engine
+│   ├── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
+│   └── teardown.sql                   # Token-rendered full purge (python setup/bootstrap.py --render setup/teardown.sql)
+├── evaluation/                         # FRAMEWORK: evaluation engine (config-driven)
 │   ├── audit_semantic_view.py          # Best practices audit (naming, docs, metadata)
 │   ├── audit_agent.py                  # Native EXECUTE_AI_EVALUATION (GPA framework)
 │   ├── evaluate_semantic_view.py       # Batch SV evaluation (SQL comparison + LLM judge)
 │   ├── llm_judge.py                   # LLM-as-a-Judge for SV evaluation
-│   └── utils.py                       # Shared helpers (connection, SQL exec, etc.)
-├── monitoring/                         # Health check & monitoring
-│   ├── dashboard.py                   # Streamlit in Snowflake (SiS) dashboard
-│   ├── snowflake.yml                  # SiS deployment config
+│   └── utils.py                       # Shared helpers + instance resolver (load_config, instance_dir)
+├── monitoring/                         # FRAMEWORK: health check & monitoring
+│   ├── dashboard.py                   # Streamlit in Snowflake (SiS) dashboard (self-locates eval DB)
+│   ├── snowflake.yml.template         # SiS deploy descriptor (token-rendered at deploy time)
 │   └── health_check.py               # PROD health checks (7 checks)
-├── .github/workflows/                  # CI/CD pipelines
+├── config/
+│   └── defaults.yaml                  # FRAMEWORK defaults: LLM models + Snowflake credit pricing (universal)
+├── .github/workflows/                  # FRAMEWORK: CI/CD pipelines (trigger on examples/retail/**)
 │   ├── semantic_view_ci.yml            # On PR: audit → evaluate → comment
 │   ├── semantic_view_cd.yml            # On merge: audit gate → eval → promote
 │   ├── agent_ci.yml                    # On PR: native GPA eval → comment
 │   └── agent_cd.yml                   # On merge: native GPA eval gate → promote
-├── config/
-│   ├── environments.yaml              # Environment config + LLM model settings
-│   ├── thresholds.yaml                # Accuracy thresholds per environment
-│   ├── agent_evaluation_config.yaml   # Reusable GPA eval YAML config (Snowflake spec)
-│   └── monitoring.yaml                # Alert thresholds & schedule config
-├── demo/                              # Demo materials
-│   ├── demo_runbook.md                # Step-by-step demo script
-│   ├── snowsight_walkthrough.md       # Snowsight UI walkthrough
-│   └── market_positioning.md          # Market positioning & differentiation
+├── examples/
+│   └── retail/                         # INSTANCE: the bundled retail example (copy to make your own)
+│       ├── config/
+│       │   ├── environments.yaml       # Databases, roles, SV/agent names, paths, example orchestration
+│       │   ├── thresholds.yaml         # Accuracy thresholds per environment
+│       │   ├── monitoring.yaml         # Alert thresholds & schedule config
+│       │   └── schedules.yaml          # Task schedule profiles (demo/prod)
+│       ├── semantic_views/{dev,prod}/retail_analytics_sv.yaml
+│       ├── agents/{dev,prod}/retail_agent.sql
+│       ├── question_banks/
+│       │   ├── semantic_view/{easy,hard,ambiguous}_questions.yaml
+│       │   └── agent/{answerable_questions,out_of_scope,adversarial_questions}.yaml
+│       ├── data/                       # Retail tables + seed data + eval dataset (token-rendered)
+│       │   ├── 02_create_tables.sql
+│       │   ├── 03_seed_data.sql
+│       │   └── 06_eval_dataset_setup.sql
+│       ├── seed/seed_demo.py           # Demo dashboard seeding (invoked by bootstrap)
+│       └── demo/                       # Demo materials
+│           ├── demo_runbook.md
+│           ├── snowsight_walkthrough.md
+│           └── market_positioning.md
 ├── docs/                              # Reference & explanation docs (Diátaxis)
+
 │   ├── README.md                      # Documentation index / map
 │   ├── reference/                     # Lookup-style: cost model
 │   └── explanation/                   # Design & intent: input governance
@@ -465,7 +461,7 @@ Edit DDL files directly in your IDE, commit to Git, and let CI/CD handle evaluat
 
 ## Configuring Thresholds
 
-Edit `config/thresholds.yaml` to adjust quality gates per environment:
+Edit `examples/retail/config/thresholds.yaml` to adjust quality gates per environment:
 
 ```yaml
 semantic_view:
@@ -492,7 +488,7 @@ Evaluation cost is measured in **Snowflake AI Credits** (not US dollars; dollar 
 - **Loop 1 (CI evaluation)** — the agent runs against a question bank and an LLM judge scores each answer. This consumes LLM tokens and is the main cost driver. As a rough guide, a single full evaluation run of a 35-question bank with five metrics is on the order of a few AI Credits.
 - **Loop 2 (runtime monitoring)** — deterministic SQL rules over `ai_observability_events`. No LLM tokens; cost is limited to short daily task runs on the configured warehouse.
 
-Actual cost is measured per request and stored in the `estimated_credits` column of `RETAIL_AI_EVAL.MONITORING.USAGE_METRICS`, computed from the per-model rates in [config/environments.yaml](config/environments.yaml).
+Actual cost is measured per request and stored in the `estimated_credits` column of the eval database's `MONITORING.USAGE_METRICS` table, computed from the per-model rates in [config/defaults.yaml](config/defaults.yaml).
 
 For the full formula, token assumptions, worked examples (small/medium/large teams), and cost-reduction levers, see [docs/reference/cost-model.md](docs/reference/cost-model.md).
 
@@ -502,7 +498,7 @@ For the full formula, token assumptions, worked examples (small/medium/large tea
 
 ### Adding Questions
 
-Add YAML entries to `question_banks/semantic_view/` or `question_banks/agent/`:
+Add YAML entries to `examples/retail/question_banks/semantic_view/` or `examples/retail/question_banks/agent/`:
 
 ```yaml
 - id: easy_011
@@ -514,25 +510,25 @@ Add YAML entries to `question_banks/semantic_view/` or `question_banks/agent/`:
 
 ### Adding to the Native Eval Dataset
 
-Add rows to `setup/06_eval_dataset_setup.sql` (or use `audit_agent.py` which auto-populates from question banks):
+Add rows to `examples/retail/data/06_eval_dataset_setup.sql` (or use `audit_agent.py` which auto-populates from question banks):
 
 ```sql
-INSERT INTO RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT_EVAL_DATASET (input_query, ground_truth)
+INSERT INTO <DB_DEV>.SEMANTIC.<EVAL_DATASET_TABLE> (input_query, ground_truth)
 VALUES ('My new question?', PARSE_JSON('{\"ground_truth_output\": \"Expected answer\"}'));
 ```
 
 ### Adding New Semantic Views
 
-1. Create DDL files in `semantic_views/{dev,prod}/`
+1. Create DDL files in `examples/retail/semantic_views/{dev,prod}/`
 2. Add corresponding question banks
-3. Update `config/environments.yaml`
+3. Update `examples/retail/config/environments.yaml`
 4. CI/CD will automatically pick up changes
 
 ### Adding New Agents
 
 1. Create agent SQL in `agents/{dev,prod}/`
 2. Add question banks in `question_banks/agent/`
-3. Update `config/environments.yaml`
+3. Update `examples/retail/config/environments.yaml`
 
 ---
 
@@ -734,7 +730,7 @@ connection_name = "default"
 
 ### Configuring Monitoring
 
-Edit `config/monitoring.yaml` to adjust alert thresholds, schedules, and notification settings.
+Edit `examples/retail/config/monitoring.yaml` to adjust alert thresholds, schedules, and notification settings.
 
 ---
 

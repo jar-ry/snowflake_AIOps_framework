@@ -60,7 +60,7 @@ Using the assumptions above with `claude-opus-4-7` and the default five metrics 
 
 ## Lifecycle cost formula
 
-An evaluation runs on every CI trigger that touches a watched path (`agents/`, `semantic_views/`, `question_banks/`, `evaluation/`, `config/thresholds.yaml`). Across a feature's life:
+An evaluation runs on every CI trigger that touches a watched path (`examples/retail/agents/`, `examples/retail/semantic_views/`, `examples/retail/question_banks/`). Across a feature's life:
 
 ```text
 E = number of promotion environments (e.g. DEV + STAGING + PROD = 3)

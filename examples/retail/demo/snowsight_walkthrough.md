@@ -125,7 +125,7 @@ LIMIT 10;
 **Option B (terminal demo):**
 ```bash
 cd ~/Desktop/CoCo\ Projects/AIOps_framework/snowflake_AIOps_framework
-python evaluation/audit_semantic_view.py --file semantic_views/dev/retail_analytics_sv.yaml
+python evaluation/audit_semantic_view.py --ddl-file examples/retail/semantic_views/dev/retail_analytics_sv.yaml
 ```
 Shows: 0 findings, 6 tables, 5 relationships — PASS.
 

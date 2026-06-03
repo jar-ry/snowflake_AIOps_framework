@@ -1,0 +1,18 @@
+# SiS deploy descriptor TEMPLATE — rendered from the active instance config.
+#
+# This file uses double-brace placeholders. bootstrap.py renders it to
+# monitoring/snowflake.yml (gitignored) before running `snow streamlit deploy`.
+# To render manually:
+#     python setup/bootstrap.py --render monitoring/snowflake.yml.template > monitoring/snowflake.yml
+definition_version: 2
+entities:
+  ai_monitoring_dashboard:
+    type: streamlit
+    identifier:
+      name: AI_MONITORING_DASHBOARD
+      database: {{DB_EVAL}}
+      schema: {{SCHEMA_MONITORING}}
+    query_warehouse: {{WAREHOUSE}}
+    main_file: dashboard.py
+    artifacts:
+      - dashboard.py

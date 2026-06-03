@@ -4,10 +4,55 @@ Shared utilities for the evaluation framework.
 """
 import os
 import json
+import functools
 import yaml
 import requests
 import snowflake.connector
 from datetime import datetime
+
+
+# ---------------------------------------------------------------------------
+# Instance resolution + config loading
+#
+# The framework is domain-agnostic. Each deployment ("instance") is an example
+# directory under examples/ that owns its environments/thresholds/monitoring/
+# schedules config + its SV, agent, question banks and demo data. The active
+# instance is chosen by the AIOPS_INSTANCE env var and defaults to the bundled
+# retail example, so the framework works out-of-box and CI needs no extra vars.
+# ---------------------------------------------------------------------------
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_INSTANCE = os.path.join(REPO_ROOT, "examples", "retail")
+
+
+def instance_dir() -> str:
+    """Absolute path to the active instance/example directory."""
+    return os.path.abspath(os.environ.get("AIOPS_INSTANCE", DEFAULT_INSTANCE))
+
+
+def instance_path(*relative_parts: str) -> str:
+    """Resolve a path that the instance config expresses relative to its own dir."""
+    return os.path.join(instance_dir(), *relative_parts)
+
+
+def framework_config_dir() -> str:
+    """Directory holding framework-level defaults (config/defaults.yaml)."""
+    return os.path.join(REPO_ROOT, "config")
+
+
+def _read_yaml(path: str) -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge `override` onto `base`. Override wins; nested dicts merge."""
+    out = dict(base)
+    for key, val in override.items():
+        if key in out and isinstance(out[key], dict) and isinstance(val, dict):
+            out[key] = _deep_merge(out[key], val)
+        else:
+            out[key] = val
+    return out
 
 
 def _pem_to_der(pem_data: bytes, passphrase: str = None) -> bytes:
@@ -106,16 +151,26 @@ def get_connection(environment: str = "dev") -> snowflake.connector.SnowflakeCon
     return conn
 
 
+@functools.lru_cache(maxsize=None)
+def _load_config_cached(inst: str) -> dict:
+    # Framework defaults (llm, pricing) merged UNDER the instance config.
+    defaults = _read_yaml(os.path.join(framework_config_dir(), "defaults.yaml"))
+    instance = _read_yaml(os.path.join(inst, "config", "environments.yaml"))
+    return _deep_merge(defaults, instance)
+
+
 def load_config() -> dict:
-    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "environments.yaml")
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+    """Merged config: framework defaults overlaid by the active instance config."""
+    return _load_config_cached(instance_dir())
+
+
+@functools.lru_cache(maxsize=None)
+def _load_thresholds_cached(inst: str) -> dict:
+    return _read_yaml(os.path.join(inst, "config", "thresholds.yaml"))
 
 
 def load_thresholds() -> dict:
-    threshold_path = os.path.join(os.path.dirname(__file__), "..", "config", "thresholds.yaml")
-    with open(threshold_path, "r") as f:
-        return yaml.safe_load(f)
+    return _load_thresholds_cached(instance_dir())
 
 
 def get_llm_model(role: str = "model") -> str:
@@ -124,10 +179,17 @@ def get_llm_model(role: str = "model") -> str:
     return llm_config.get(role, llm_config.get("model", "claude-opus-4-7"))
 
 
+def question_bank_dir(bank_type: str) -> str:
+    """Resolve a question-bank directory from instance config (falls back to the
+    conventional layout). bank_type is 'agent' or 'semantic_view'."""
+    qb = load_config().get("question_banks", {})
+    key = "agent_dir" if bank_type == "agent" else "semantic_view_dir"
+    rel = qb.get(key, os.path.join("question_banks", bank_type))
+    return instance_path(rel)
+
+
 def load_question_bank(bank_type: str, difficulty: str) -> list:
-    path = os.path.join(
-        os.path.dirname(__file__), "..", "question_banks", bank_type, f"{difficulty}_questions.yaml"
-    )
+    path = os.path.join(question_bank_dir(bank_type), f"{difficulty}_questions.yaml")
     with open(path, "r") as f:
         data = yaml.safe_load(f)
     return data.get("questions", [])
@@ -305,7 +367,9 @@ def log_eval_run(
         str(v)
         for v in run_data.values()
     ])
-    sql = f"INSERT INTO RETAIL_AI_EVAL.RESULTS.{table} ({columns}) SELECT {values}"
+    ev = load_config()["eval"]
+    fqn = f"{ev['database']}.{ev['schema']}.{table}"
+    sql = f"INSERT INTO {fqn} ({columns}) SELECT {values}"
     conn.cursor().execute(sql)
 
 

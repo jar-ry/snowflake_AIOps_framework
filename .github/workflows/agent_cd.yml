@@ -4,12 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'agents/**'
+      - 'examples/retail/agents/**'
 
 jobs:
   promote-agent-to-prod:
     runs-on: ubuntu-latest
     env:
+      AIOPS_INSTANCE: examples/retail
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
