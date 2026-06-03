@@ -225,15 +225,15 @@ def check_error_rate(conn) -> dict:
         }
 
 
-def check_active_alerts(conn) -> dict:
+def check_active_alerts(conn, mon_fqn) -> dict:
     start = time.time()
     try:
-        result = execute_sql(conn, """
+        result = execute_sql(conn, f"""
             SELECT
                 COUNT(*) AS total_active,
                 COUNT_IF(severity = 'CRITICAL') AS critical_count,
                 COUNT_IF(severity = 'WARNING') AS warning_count
-            FROM RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+            FROM {mon_fqn}.ALERT_HISTORY
             WHERE acknowledged = FALSE
         """)
         latency = int((time.time() - start) * 1000)
@@ -266,8 +266,10 @@ def run_health_checks(environment: str) -> dict:
     config = load_config()
     env_config = config["environments"][environment]
     database = env_config["database"]
-    sv_name = env_config.get("semantic_view", f"{database}.SEMANTIC.RETAIL_ANALYTICS_SV")
-    agent_name = env_config.get("agent_name", f"{database}.SEMANTIC.RETAIL_AGENT")
+    sv_name = env_config["semantic_view"]
+    agent_name = env_config["agent_name"]
+    ev = config["eval"]
+    mon_fqn = f"{ev['database']}.{ev['monitoring_schema']}"
 
     conn = get_connection(environment)
     checks = []
@@ -286,7 +288,7 @@ def run_health_checks(environment: str) -> dict:
         ("Agent responds", lambda: check_agent_responds(conn, agent_name)),
         ("Data freshness", lambda: check_data_freshness(conn, database)),
         ("Error rate (24h)", lambda: check_error_rate(conn)),
-        ("Active alerts", lambda: check_active_alerts(conn)),
+        ("Active alerts", lambda: check_active_alerts(conn, mon_fqn)),
     ]
 
     for label, fn in check_fns:
@@ -301,7 +303,7 @@ def run_health_checks(environment: str) -> dict:
 
         try:
             execute_sql(conn, f"""
-                INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS
+                INSERT INTO {mon_fqn}.HEALTH_CHECK_RESULTS
                     (check_name, environment, target_name, status, details, latency_ms)
                 VALUES (
                     '{result["check_name"]}',
