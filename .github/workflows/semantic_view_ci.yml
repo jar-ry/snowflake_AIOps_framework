@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install snowflake-connector-python pyyaml
+        run: pip install -r requirements.txt
 
       - name: Run semantic view best practices audit
         id: audit
@@ -52,6 +52,11 @@ jobs:
     name: "Evaluate: Question Banks"
     needs: [audit-semantic-view]
     runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
 
     steps:
       - name: Checkout code
@@ -63,34 +68,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install snowflake-connector-python pyyaml
+        run: pip install -r requirements.txt
 
       - name: Deploy semantic view to DEV
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        run: |
-          python -c "
-          import snowflake.connector, os
-          conn = snowflake.connector.connect(
-              account=os.environ['SNOWFLAKE_ACCOUNT'],
-              user=os.environ['SNOWFLAKE_USER'],
-              password=os.environ['SNOWFLAKE_PASSWORD'],
-              warehouse='RETAIL_AI_EVAL_WH'
-          )
-          with open('semantic_views/dev/retail_analytics_sv.yaml', 'r') as f:
-              yaml_content = f.read()
-          conn.cursor().execute(f\"CALL SYSTEM\$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_DEV.SEMANTIC', \$\${yaml_content}\$\$)\")
-          print('Semantic view deployed to DEV via YAML')
-          conn.close()
-          "
+        run: python setup/deploy.py --target semantic_view --environment dev
 
       - name: Run question bank evaluation
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         run: |
           python evaluation/evaluate_semantic_view.py \
             --environment dev \

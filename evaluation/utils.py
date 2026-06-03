@@ -10,16 +10,40 @@ import snowflake.connector
 from datetime import datetime
 
 
-def _load_private_key(key_path: str) -> bytes:
+def _pem_to_der(pem_data: bytes, passphrase: str = None) -> bytes:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
-    with open(os.path.expanduser(key_path), "rb") as f:
-        p_key = serialization.load_pem_private_key(f.read(), password=None, backend=default_backend())
+    pw = passphrase.encode() if passphrase else None
+    p_key = serialization.load_pem_private_key(pem_data, password=pw, backend=default_backend())
     return p_key.private_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PrivateFormat.PKCS8,
         encryption_algorithm=serialization.NoEncryption(),
     )
+
+
+def _load_private_key(key_path: str, passphrase: str = None) -> bytes:
+    with open(os.path.expanduser(key_path), "rb") as f:
+        return _pem_to_der(f.read(), passphrase)
+
+
+def _private_key_from_env() -> bytes:
+    """Load a PKCS8 private key from the SNOWFLAKE_PRIVATE_KEY env var.
+
+    Accepts raw PEM (multi-line, or single-line with literal \\n escapes) or
+    base64-encoded PEM. Optional passphrase via SNOWFLAKE_PRIVATE_KEY_PASSPHRASE.
+    Returns None if the env var is unset. All inputs come from the environment
+    so the framework stays generic across instances and CI providers.
+    """
+    raw = os.getenv("SNOWFLAKE_PRIVATE_KEY")
+    if not raw:
+        return None
+    import base64
+    if "-----BEGIN" in raw:
+        data = raw.replace("\\n", "\n").encode()
+    else:
+        data = base64.b64decode(raw)
+    return _pem_to_der(data, os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE"))
 
 
 def _resolve_connection_params(connection_name: str) -> dict:
@@ -39,11 +63,26 @@ def get_connection(environment: str = "dev") -> snowflake.connector.SnowflakeCon
     config = load_config()
     env_config = config["environments"][environment]
 
-    if os.getenv("SNOWFLAKE_ACCOUNT") and os.getenv("SNOWFLAKE_USER"):
+    account = os.getenv("SNOWFLAKE_ACCOUNT")
+    user = os.getenv("SNOWFLAKE_USER")
+    if account and user and os.getenv("SNOWFLAKE_PRIVATE_KEY"):
+        # Headless / CI: key-pair (JWT) auth from environment. Preferred for
+        # automation since SSO cannot run headless. All values from env vars.
         conn = snowflake.connector.connect(
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            user=os.getenv("SNOWFLAKE_USER"),
+            account=account,
+            user=user,
+            private_key=_private_key_from_env(),
+            authenticator="snowflake_jwt",
+            role=os.getenv("SNOWFLAKE_ROLE"),
+            warehouse=env_config["warehouse"],
+        )
+    elif account and user:
+        # Env-var password auth (fallback when no key-pair is provided).
+        conn = snowflake.connector.connect(
+            account=account,
+            user=user,
             password=os.getenv("SNOWFLAKE_PASSWORD"),
+            role=os.getenv("SNOWFLAKE_ROLE"),
             warehouse=env_config["warehouse"],
         )
     else:
@@ -188,7 +227,7 @@ def call_cortex_agent(
                 event = json.loads(data)
                 if "message" in event and "code" in event:
                     return {"error": event["message"]}
-                if "text" in event and "content_index" is not None:
+                if "text" in event:
                     if event.get("text"):
                         text_parts.append(event["text"])
                 if "content" in event:
@@ -208,6 +247,39 @@ def call_cortex_agent(
             result["content"].append({"type": "sql", "statement": sql_stmt})
         return result
 
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+
+def call_cortex_analyst(
+    conn: snowflake.connector.SnowflakeConnection,
+    semantic_view: str,
+    question: str,
+) -> dict:
+    """Call Cortex Analyst via the REST message API (non-deprecated path).
+
+    Mirrors call_cortex_agent's auth/host derivation. Returns
+    {"content": [...]} on success or {"error": "..."} on failure.
+    """
+    token = conn.rest.token
+    host = conn.host.replace("_", "-").lower()
+
+    url = f"https://{host}/api/v2/cortex/analyst/message"
+    headers = {
+        "Authorization": f'Snowflake Token="{token}"',
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messages": [{"role": "user", "content": [{"type": "text", "text": question}]}],
+        "semantic_view": semantic_view,
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=120)
+        if resp.status_code != 200:
+            return {"error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+        data = resp.json()
+        return {"content": data.get("message", {}).get("content", [])}
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 

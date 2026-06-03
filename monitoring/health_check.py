@@ -29,7 +29,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "evaluation"))
-from utils import get_connection, execute_sql, load_config
+from utils import get_connection, execute_sql, load_config, call_cortex_agent, call_cortex_analyst
 
 
 def check_semantic_view_exists(conn, sv_name: str) -> dict:
@@ -87,24 +87,9 @@ def check_agent_exists(conn, agent_name: str) -> dict:
 def check_analyst_responds(conn, sv_name: str) -> dict:
     start = time.time()
     try:
-        sql = f"""
-        SELECT SNOWFLAKE.CORTEX.COMPLETE(
-            'analyst',
-            OBJECT_CONSTRUCT(
-                'messages', ARRAY_CONSTRUCT(
-                    OBJECT_CONSTRUCT('role', 'user', 'content', ARRAY_CONSTRUCT(
-                        OBJECT_CONSTRUCT('type', 'text', 'text', 'How many customers do we have?')
-                    ))
-                ),
-                'semantic_model', OBJECT_CONSTRUCT(
-                    'semantic_view', '{sv_name}'
-                )
-            )
-        ) AS response
-        """
-        result = execute_sql(conn, sql)
+        resp = call_cortex_analyst(conn, sv_name, "How many customers do we have?")
         latency = int((time.time() - start) * 1000)
-        if result and not result[0].get("error"):
+        if "error" not in resp:
             status = "HEALTHY" if latency < 30000 else "DEGRADED"
             return {
                 "check_name": "analyst_responds",
@@ -115,7 +100,7 @@ def check_analyst_responds(conn, sv_name: str) -> dict:
         return {
             "check_name": "analyst_responds",
             "status": "UNHEALTHY",
-            "details": f"Analyst failed: {result}",
+            "details": f"Analyst failed: {resp.get('error')}",
             "latency_ms": latency,
         }
     except Exception as e:
@@ -130,20 +115,9 @@ def check_analyst_responds(conn, sv_name: str) -> dict:
 def check_agent_responds(conn, agent_name: str) -> dict:
     start = time.time()
     try:
-        sql = f"""
-        SELECT SNOWFLAKE.CORTEX.COMPLETE(
-            'agent',
-            OBJECT_CONSTRUCT(
-                'agent_name', '{agent_name}',
-                'messages', ARRAY_CONSTRUCT(
-                    OBJECT_CONSTRUCT('role', 'user', 'content', 'What is our total revenue?')
-                )
-            )
-        ) AS response
-        """
-        result = execute_sql(conn, sql)
+        resp = call_cortex_agent(conn, agent_name, "What is our total revenue?")
         latency = int((time.time() - start) * 1000)
-        if result and not result[0].get("error"):
+        if "error" not in resp:
             status = "HEALTHY" if latency < 30000 else "DEGRADED"
             return {
                 "check_name": "agent_responds",
@@ -154,7 +128,7 @@ def check_agent_responds(conn, agent_name: str) -> dict:
         return {
             "check_name": "agent_responds",
             "status": "UNHEALTHY",
-            "details": f"Agent failed: {result}",
+            "details": f"Agent failed: {resp.get('error')}",
             "latency_ms": latency,
         }
     except Exception as e:

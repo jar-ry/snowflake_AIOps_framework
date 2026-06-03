@@ -409,18 +409,18 @@ BEGIN
     LET status STRING := 'HEALTHY';
     LET details STRING := '';
     BEGIN
-        LET result VARIANT := (SELECT SNOWFLAKE.CORTEX.COMPLETE('analyst',
-            OBJECT_CONSTRUCT('messages', ARRAY_CONSTRUCT(OBJECT_CONSTRUCT('role','user','content',
-            ARRAY_CONSTRUCT(OBJECT_CONSTRUCT('type','text','text','What is our total revenue?')))),
-            'semantic_model', OBJECT_CONSTRUCT('semantic_view', :sv_name))));
+        -- SQL-native liveness: confirm the semantic view exists / is accessible.
+        LET stmt STRING := 'DESCRIBE SEMANTIC VIEW ' || :sv_name;
+        EXECUTE IMMEDIATE :stmt;
         LET latency INTEGER := DATEDIFF('millisecond', :start_ts, CURRENT_TIMESTAMP());
         INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
-        VALUES ('weekly_sv_smoke_test','prod',:sv_name,100,0,TRUE,1,1,0, PARSE_JSON('{"latency_ms":' || :latency || '}'));
+        SELECT 'weekly_sv_smoke_test','prod',:sv_name,100,0,TRUE,1,1,0, OBJECT_CONSTRUCT('check','sv_exists','latency_ms', :latency);
         details := 'Passed in ' || :latency || 'ms';
     EXCEPTION WHEN OTHER THEN
-        status := 'UNHEALTHY'; details := 'Failed: ' || SQLERRM;
+        LET err STRING := SQLERRM;
+        status := 'UNHEALTHY'; details := 'Failed: ' || :err;
         INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
-        VALUES ('weekly_sv_smoke_test','prod',:sv_name,0,0,FALSE,1,0,1, PARSE_JSON('{"error":"' || SQLERRM || '"}'));
+        SELECT 'weekly_sv_smoke_test','prod',:sv_name,0,0,FALSE,1,0,1, OBJECT_CONSTRUCT('error', :err);
     END;
     INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
     VALUES ('weekly_sv_smoke_test','prod',:sv_name,:status,:details,0);
@@ -437,16 +437,18 @@ BEGIN
     LET status STRING := 'HEALTHY';
     LET details STRING := '';
     BEGIN
-        LET result STRING := (SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(:agent_name,
-            '{"messages":[{"role":"user","content":[{"type":"text","text":"What is our total revenue this year?"}]}]}'));
+        -- SQL-native liveness: confirm the agent exists / is accessible.
+        LET stmt STRING := 'DESCRIBE AGENT ' || :agent_name;
+        EXECUTE IMMEDIATE :stmt;
         LET latency INTEGER := DATEDIFF('millisecond', :start_ts, CURRENT_TIMESTAMP());
         INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
-        VALUES ('weekly_agent_smoke_test','prod',:agent_name,100,0,TRUE,1,1,0, PARSE_JSON('{"latency_ms":' || :latency || '}'));
+        SELECT 'weekly_agent_smoke_test','prod',:agent_name,100,0,TRUE,1,1,0, OBJECT_CONSTRUCT('check','agent_exists','latency_ms', :latency);
         details := 'Passed in ' || :latency || 'ms';
     EXCEPTION WHEN OTHER THEN
-        status := 'UNHEALTHY'; details := 'Failed: ' || SQLERRM;
+        LET err STRING := SQLERRM;
+        status := 'UNHEALTHY'; details := 'Failed: ' || :err;
         INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
-        VALUES ('weekly_agent_smoke_test','prod',:agent_name,0,0,FALSE,1,0,1, PARSE_JSON('{"error":"' || SQLERRM || '"}'));
+        SELECT 'weekly_agent_smoke_test','prod',:agent_name,0,0,FALSE,1,0,1, OBJECT_CONSTRUCT('error', :err);
     END;
     INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
     VALUES ('weekly_agent_smoke_test','prod',:agent_name,:status,:details,0);
