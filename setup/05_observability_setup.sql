@@ -20,7 +20,7 @@ USE ROLE SYSADMIN;
 -- Convenience view: Agent-level summary per request
 -- Aggregates from the top-level "Agent" span
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.OBSERVABILITY.AGENT_TRACES AS
 SELECT
     e.TIMESTAMP                                                              AS event_time,
     e.START_TIMESTAMP                                                        AS start_time,
@@ -58,7 +58,7 @@ WHERE e.RECORD_TYPE = 'SPAN'
 -- Convenience view: Agent request-level rollup
 -- One row per trace_id with aggregated token counts and step count
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.OBSERVABILITY.AGENT_REQUEST_SUMMARY AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.OBSERVABILITY.AGENT_REQUEST_SUMMARY AS
 SELECT
     trace_id,
     MIN(start_time)                                     AS request_start,
@@ -78,7 +78,7 @@ SELECT
     MAX(step_number)                                    AS max_step_number,
     COUNT(DISTINCT tool_selected)                       AS distinct_tools_used,
     ARRAY_AGG(tool_selected) WITHIN GROUP (ORDER BY step_number) AS tools_used
-FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+FROM {{DB_EVAL}}.OBSERVABILITY.AGENT_TRACES
 WHERE span_name LIKE 'ReasoningAgentStepPlanning%'
    OR span_name LIKE 'CodingAgent.Step%'
 GROUP BY trace_id;
@@ -87,7 +87,7 @@ GROUP BY trace_id;
 -- Convenience view: Cortex Analyst query logs
 -- Filters for analyst tool executions within agent traces
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.OBSERVABILITY.ANALYST_QUERIES AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.OBSERVABILITY.ANALYST_QUERIES AS
 SELECT
     e.TIMESTAMP                                                              AS query_time,
     e.START_TIMESTAMP                                                        AS start_time,
@@ -109,7 +109,7 @@ WHERE e.RECORD_TYPE = 'SPAN'
 -- ============================================================
 -- Convenience view: LLM-level spans (non-agent COMPLETE calls)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.OBSERVABILITY.LLM_CALLS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.OBSERVABILITY.LLM_CALLS AS
 SELECT
     e.TIMESTAMP                                         AS call_time,
     e.START_TIMESTAMP                                   AS start_time,
@@ -128,14 +128,14 @@ WHERE e.RECORD_TYPE = 'SPAN'
 -- ============================================================
 USE ROLE SECURITYADMIN;
 
-GRANT USAGE ON SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON ALL VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON FUTURE VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_ADMIN;
+GRANT USAGE ON SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON ALL VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_ADMIN}};
 
-GRANT USAGE ON SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON ALL VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON FUTURE VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_REVIEWER;
+GRANT USAGE ON SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON ALL VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_REVIEWER}};
 
-GRANT USAGE ON SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_DEPLOYER;
-GRANT SELECT ON ALL VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_DEPLOYER;
-GRANT SELECT ON FUTURE VIEWS IN SCHEMA RETAIL_AI_EVAL.OBSERVABILITY TO ROLE RETAIL_AI_DEPLOYER;
+GRANT USAGE ON SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_DEPLOYER}};
+GRANT SELECT ON ALL VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_DEPLOYER}};
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA {{DB_EVAL}}.OBSERVABILITY TO ROLE {{ROLE_DEPLOYER}};

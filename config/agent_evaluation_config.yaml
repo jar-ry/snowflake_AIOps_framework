@@ -1,3 +1,9 @@
+# DEPRECATED / REFERENCE ONLY.
+# This static config is NOT read by any code. evaluation/audit_agent.py generates
+# its EXECUTE_AI_EVALUATION config at runtime (generate_eval_config, with an inline
+# dataset block) from config/environments.yaml + the question banks. Kept as an
+# illustrative example of the Snowflake Agent Evaluation YAML spec. The retail
+# names below are placeholders.
 evaluation:
   agent_params:
     agent_name: RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT

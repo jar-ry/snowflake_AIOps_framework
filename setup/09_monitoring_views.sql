@@ -9,12 +9,12 @@
 -- ============================================================================
 
 USE ROLE SYSADMIN;
-USE DATABASE RETAIL_AI_EVAL;
+USE DATABASE {{DB_EVAL}};
 
 -- ============================================================
 -- VIEW: Evaluation accuracy trend over time (CI/CD + scheduled)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_EVAL_ACCURACY_TREND AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_EVAL_ACCURACY_TREND AS
 SELECT
     run_timestamp::DATE                         AS eval_date,
     'semantic_view'                             AS eval_type,
@@ -36,7 +36,7 @@ SELECT
         ORDER BY run_timestamp
     ), accuracy_pct)                            AS accuracy_delta,
     run_timestamp
-FROM RETAIL_AI_EVAL.RESULTS.SEMANTIC_VIEW_EVAL_RUNS
+FROM {{DB_EVAL}}.RESULTS.SEMANTIC_VIEW_EVAL_RUNS
 
 UNION ALL
 
@@ -61,7 +61,7 @@ SELECT
         ORDER BY run_timestamp
     ), accuracy_pct)                            AS accuracy_delta,
     run_timestamp
-FROM RETAIL_AI_EVAL.RESULTS.AGENT_EVAL_RUNS
+FROM {{DB_EVAL}}.RESULTS.AGENT_EVAL_RUNS
 
 UNION ALL
 
@@ -86,12 +86,12 @@ SELECT
         ORDER BY run_timestamp
     ), accuracy_pct)                            AS accuracy_delta,
     run_timestamp
-FROM RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS;
+FROM {{DB_EVAL}}.MONITORING.SCHEDULED_EVAL_RUNS;
 
 -- ============================================================
 -- VIEW: Feedback sentiment trend (daily)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_FEEDBACK_TREND AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_FEEDBACK_TREND AS
 SELECT
     summary_date,
     environment,
@@ -119,12 +119,12 @@ SELECT
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     )                                           AS rolling_7d_total_feedback,
     feedback_categories
-FROM RETAIL_AI_EVAL.MONITORING.FEEDBACK_DAILY_SUMMARY;
+FROM {{DB_EVAL}}.MONITORING.FEEDBACK_DAILY_SUMMARY;
 
 -- ============================================================
 -- VIEW: Token cost & usage trends (daily)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_TOKEN_COST_TREND AS
 SELECT
     metric_date,
     environment,
@@ -168,12 +168,12 @@ SELECT
     ROUND(
         COALESCE(failed_requests, 0) * 100.0 / NULLIF(total_requests, 0), 2
     )                                           AS error_rate_pct
-FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS;
+FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS;
 
 -- ============================================================
 -- VIEW: Agent usage patterns (hourly distribution from raw events)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_AGENT_USAGE_PATTERNS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_AGENT_USAGE_PATTERNS AS
 SELECT
     event_time::DATE                                                AS usage_date,
     HOUR(event_time)                                                AS usage_hour,
@@ -191,13 +191,13 @@ SELECT
     SUM(COALESCE(total_tokens, 0))                                  AS total_tokens,
     AVG(planning_duration_ms)                                       AS avg_latency_ms,
     COUNT_IF(status_code != 'STATUS_CODE_OK')                       AS error_count
-FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+FROM {{DB_EVAL}}.OBSERVABILITY.AGENT_TRACES
 GROUP BY 1, 2, 3, 4, 5, 6, 7;
 
 -- ============================================================
 -- VIEW: Health dashboard summary (latest status per check)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_HEALTH_DASHBOARD AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_HEALTH_DASHBOARD AS
 SELECT *
 FROM (
     SELECT
@@ -212,14 +212,14 @@ FROM (
             PARTITION BY check_name, environment, target_name
             ORDER BY checked_at DESC
         ) AS rn
-    FROM RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS
+    FROM {{DB_EVAL}}.MONITORING.HEALTH_CHECK_RESULTS
 )
 WHERE rn = 1;
 
 -- ============================================================
 -- VIEW: Active alerts (unacknowledged)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_ACTIVE_ALERTS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_ACTIVE_ALERTS AS
 SELECT
     alert_id,
     alert_type,
@@ -231,7 +231,7 @@ SELECT
     threshold_value,
     created_at,
     DATEDIFF('hour', created_at, CURRENT_TIMESTAMP()) AS hours_since_created
-FROM RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+FROM {{DB_EVAL}}.MONITORING.ALERT_HISTORY
 WHERE acknowledged = FALSE
 ORDER BY
     CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END,
@@ -240,7 +240,7 @@ ORDER BY
 -- ============================================================
 -- VIEW: Weekly executive summary
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_WEEKLY_EXECUTIVE_SUMMARY AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_WEEKLY_EXECUTIVE_SUMMARY AS
 SELECT
     DATE_TRUNC('week', metric_date)                     AS week_start,
     environment,
@@ -251,7 +251,7 @@ SELECT
     SUM(estimated_credits)                             AS total_credits,
     AVG(avg_latency_ms)                                 AS avg_latency_ms,
     SUM(unique_users)                                   AS total_user_sessions
-FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
+FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS
 GROUP BY 1, 2;
 
 -- ============================================================
@@ -259,7 +259,7 @@ GROUP BY 1, 2;
 -- ============================================================
 USE ROLE SECURITYADMIN;
 
-GRANT SELECT ON ALL VIEWS IN SCHEMA RETAIL_AI_EVAL.MONITORING TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON ALL VIEWS IN SCHEMA RETAIL_AI_EVAL.MONITORING TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON FUTURE VIEWS IN SCHEMA RETAIL_AI_EVAL.MONITORING TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON FUTURE VIEWS IN SCHEMA RETAIL_AI_EVAL.MONITORING TO ROLE RETAIL_AI_REVIEWER;
+GRANT SELECT ON ALL VIEWS IN SCHEMA {{DB_EVAL}}.MONITORING TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON ALL VIEWS IN SCHEMA {{DB_EVAL}}.MONITORING TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA {{DB_EVAL}}.MONITORING TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON FUTURE VIEWS IN SCHEMA {{DB_EVAL}}.MONITORING TO ROLE {{ROLE_REVIEWER}};

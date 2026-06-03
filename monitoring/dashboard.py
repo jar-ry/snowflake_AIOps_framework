@@ -11,6 +11,12 @@ st.set_page_config(
 
 session = get_active_session()
 
+# The dashboard is deployed into the eval database; derive it from the session so
+# the same code works for any deployment (no hardcoded database name).
+EVAL_DB = (session.get_current_database() or "RETAIL_AI_EVAL").strip('"')
+MON = f"{EVAL_DB}.MONITORING"
+OBS = f"{EVAL_DB}.OBSERVABILITY"
+
 
 def run_query(sql):
     try:
@@ -21,9 +27,11 @@ def run_query(sql):
 
 with st.sidebar:
     st.title(":material/monitoring: AI Monitoring")
+    env_rows = run_query(f"SELECT DISTINCT environment FROM {MON}.V_WEEKLY_EXECUTIVE_SUMMARY WHERE environment IS NOT NULL ORDER BY 1")
+    env_options = ["All"] + (env_rows.iloc[:, 0].astype(str).tolist() if not env_rows.empty else [])
     env_filter = st.selectbox(
         "Environment",
-        ["All", "RETAIL_AI_PROD", "RETAIL_AI_DEV"],
+        env_options,
         index=0,
     )
     time_window = st.selectbox(
@@ -71,7 +79,7 @@ with tab_overview:
     weekly = run_query(f"""
         SELECT week_start, environment, total_requests, success_rate_pct,
                total_tokens, total_credits, avg_latency_ms, total_user_sessions
-        FROM RETAIL_AI_EVAL.MONITORING.V_WEEKLY_EXECUTIVE_SUMMARY
+        FROM {MON}.V_WEEKLY_EXECUTIVE_SUMMARY
         WHERE week_start >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
         ORDER BY week_start DESC
         LIMIT 52
@@ -138,7 +146,7 @@ with tab_overview:
     health = run_query("""
         SELECT check_name, environment, target_name, status, details,
                latency_ms, checked_at
-        FROM RETAIL_AI_EVAL.MONITORING.V_HEALTH_DASHBOARD
+        FROM {MON}.V_HEALTH_DASHBOARD
         ORDER BY CASE status
             WHEN 'UNHEALTHY' THEN 0 WHEN 'DEGRADED' THEN 1 ELSE 2
         END, checked_at DESC
@@ -163,7 +171,7 @@ with tab_evals:
         SELECT eval_date, eval_type, environment, target_name,
                accuracy_pct, threshold_pct, passed_threshold,
                total_questions, passed_questions, accuracy_delta
-        FROM RETAIL_AI_EVAL.MONITORING.V_EVAL_ACCURACY_TREND
+        FROM {MON}.V_EVAL_ACCURACY_TREND
         WHERE eval_date >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
         ORDER BY eval_date DESC
     """)
@@ -213,7 +221,7 @@ with tab_quality:
                 MAX(CASE WHEN total_tokens > 50000 THEN 1 ELSE 0 END) AS is_high_token_burn,
                 MAX(CASE WHEN planning_duration_ms > 30000 THEN 1 ELSE 0 END) AS is_slow_request,
                 MAX(CASE WHEN planning_status != 'success' AND planning_status IS NOT NULL THEN 1 ELSE 0 END) AS is_planning_error
-            FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+            FROM {OBS}.AGENT_TRACES
             WHERE {time_filter} {env_clause}
               AND span_name LIKE 'ReasoningAgentStep%'
               AND agent_name IS NOT NULL
@@ -278,7 +286,7 @@ with tab_quality:
                flag_high_token_burn AS high_token_burn,
                flag_planning_error AS planning_error,
                event_time, environment
-        FROM RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_FLAGS
+        FROM {MON}.V_INTERACTION_QUALITY_FLAGS
         WHERE {time_filter} {env_clause}
         ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END,
                  event_time DESC
@@ -297,7 +305,7 @@ with tab_feedback:
                total_feedback, positive_count, neutral_count, negative_count,
                avg_rating, negative_pct, rolling_7d_avg_rating,
                rolling_7d_negative_pct
-        FROM RETAIL_AI_EVAL.MONITORING.V_FEEDBACK_TREND
+        FROM {MON}.V_FEEDBACK_TREND
         WHERE summary_date >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
         ORDER BY summary_date DESC
     """)
@@ -360,7 +368,7 @@ with tab_costs:
                SUM(CASE WHEN model_used = 'claude-opus-4-7' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
                         ELSE COALESCE(input_tokens,0)/1000000.0*1.0 + COALESCE(output_tokens,0)/1000000.0*1.0 END) AS estimated_credits,
                AVG(planning_duration_ms) AS avg_latency_ms
-        FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+        FROM {OBS}.AGENT_TRACES
         WHERE {time_filter} {env_clause}
           AND span_name LIKE 'ReasoningAgentStep%'
         GROUP BY 1,2,3,4
@@ -420,7 +428,7 @@ with tab_alerts:
         SELECT alert_id, alert_type, severity, environment, target_name,
                message, metric_value, threshold_value,
                created_at, hours_since_created
-        FROM RETAIL_AI_EVAL.MONITORING.V_ACTIVE_ALERTS
+        FROM {MON}.V_ACTIVE_ALERTS
         WHERE 1=1 {env_clause}
         ORDER BY CASE severity WHEN 'CRITICAL' THEN 0 WHEN 'WARNING' THEN 1 ELSE 2 END,
                  created_at DESC
@@ -453,7 +461,7 @@ with tab_alerts:
         SELECT alert_type, severity, environment, target_name,
                message, metric_value, threshold_value,
                acknowledged, created_at
-        FROM RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        FROM {MON}.ALERT_HISTORY
         WHERE created_at >= DATEADD('day', -{days_back}, CURRENT_TIMESTAMP()) {env_clause}
         ORDER BY created_at DESC
         LIMIT 200
@@ -463,4 +471,4 @@ with tab_alerts:
     else:
         st.caption("No alerts in this period.")
 
-st.caption("Data refreshes every 10 minutes. Powered by RETAIL_AI_EVAL.MONITORING views.")
+st.caption("Data refreshes every 10 minutes. Powered by the monitoring schema.")

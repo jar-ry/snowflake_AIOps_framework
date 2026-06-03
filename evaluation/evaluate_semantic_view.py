@@ -16,7 +16,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 from utils import (
-    get_connection, load_question_bank, load_thresholds,
+    get_connection, load_question_bank, load_thresholds, load_config,
     execute_sql, call_cortex_analyst, log_eval_run, format_results_table,
 )
 from llm_judge import judge_sql_result, judge_ambiguous_result
@@ -102,6 +102,7 @@ def run_evaluation(
     conn = get_connection(environment)
     thresholds = load_thresholds()
     env_thresholds = thresholds.get("semantic_view", {}).get(environment, thresholds["semantic_view"]["default"])
+    env_database = load_config()["environments"][environment]["database"]
 
     all_results = []
     for category in categories:
@@ -114,7 +115,7 @@ def run_evaluation(
             print(f"  [{q['id']}] {q['question'][:60]}...", end=" ")
             result = evaluate_question(
                 conn, semantic_view, q,
-                env_database=f"RETAIL_AI_{environment.upper()}"
+                env_database=env_database
             )
             status = result["match_status"]
             score = result.get("llm_judge_score", 0)
@@ -188,7 +189,7 @@ def run_evaluation(
 def main():
     parser = argparse.ArgumentParser(description="Evaluate a semantic view against question banks")
     parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
-    parser.add_argument("--semantic-view", "-s", required=True, help="Fully qualified semantic view name")
+    parser.add_argument("--semantic-view", "-s", default=None, help="Fully qualified semantic view name. Defaults to config[environments][env].semantic_view")
     parser.add_argument("--categories", "-c", default="easy,hard,ambiguous", help="Comma-separated categories")
     parser.add_argument("--git-sha", default="", help="Git commit SHA for tracking")
     parser.add_argument("--git-branch", default="", help="Git branch name for tracking")
@@ -198,7 +199,7 @@ def main():
     categories = [c.strip() for c in args.categories.split(",")]
     result = run_evaluation(
         environment=args.environment,
-        semantic_view=args.semantic_view,
+        semantic_view=args.semantic_view or load_config()["environments"][args.environment]["semantic_view"],
         categories=categories,
         git_sha=args.git_sha,
         git_branch=args.git_branch,

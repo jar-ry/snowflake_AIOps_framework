@@ -30,14 +30,12 @@ jobs:
       - name: Run best practices audit (gate)
         run: |
           python evaluation/audit_semantic_view.py \
-            --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
             --output sv_audit_report.json
 
       - name: Run final evaluation on DEV
         run: |
           python evaluation/evaluate_semantic_view.py \
             --environment dev \
-            --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV \
             --categories easy,hard,ambiguous \
             --git-sha ${{ github.sha }} \
             --git-branch main \

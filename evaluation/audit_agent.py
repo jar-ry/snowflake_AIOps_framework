@@ -546,7 +546,7 @@ def run_agent_audit(
 def main():
     parser = argparse.ArgumentParser(description="Run native Snowflake agent evaluation")
     parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
-    parser.add_argument("--agent-name", "-a", required=True, help="Fully qualified agent name (DB.SCHEMA.AGENT)")
+    parser.add_argument("--agent-name", "-a", default=None, help="Fully qualified agent name (DB.SCHEMA.AGENT). Defaults to config[environments][env].agent_name")
     parser.add_argument("--metrics", "-m", default="answer_correctness,logical_consistency,safety,groundedness,execution_efficiency",
                         help="Comma-separated metrics: answer_correctness, logical_consistency, safety, groundedness, execution_efficiency")
     parser.add_argument("--git-sha", default="")
@@ -558,9 +558,10 @@ def main():
     args = parser.parse_args()
 
     metrics = [m.strip() for m in args.metrics.split(",")]
+    agent_fqn = args.agent_name or load_config()["environments"][args.environment]["agent_name"]
     result = run_agent_audit(
         environment=args.environment,
-        agent_fqn=args.agent_name,
+        agent_fqn=agent_fqn,
         metrics=metrics,
         git_sha=args.git_sha,
         git_branch=args.git_branch,

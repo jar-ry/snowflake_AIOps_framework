@@ -31,7 +31,6 @@ jobs:
         run: |
           python evaluation/audit_agent.py \
             --environment dev \
-            --agent-name RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT \
             --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
             --git-sha ${{ github.sha }} \
             --git-branch main \

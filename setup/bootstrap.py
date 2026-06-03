@@ -42,6 +42,66 @@ def load_schedule_config(profile: str = "demo") -> dict:
     return profiles[profile]["tasks"]
 
 
+def load_env_config() -> dict:
+    with open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")) as f:
+        return yaml.safe_load(f)
+
+
+def build_sql_tokens(cfg: dict) -> dict:
+    """Map {{TOKEN}} placeholders in the infra SQL to config values."""
+    envs = cfg["environments"]
+    dev, prod, ev, roles = envs["dev"], envs["prod"], cfg["eval"], cfg["roles"]
+    return {
+        "DB_DEV": dev["database"],
+        "DB_PROD": prod["database"],
+        "DB_EVAL": ev["database"],
+        "WAREHOUSE": ev["warehouse"],
+        "SCHEMA_ANALYTICS": dev["schema"],
+        "SCHEMA_SEMANTIC": dev["semantic_schema"],
+        "SCHEMA_RESULTS": ev["schema"],
+        "SCHEMA_OBSERVABILITY": ev["observability_schema"],
+        "SCHEMA_MONITORING": ev["monitoring_schema"],
+        "ROLE_ANALYST": roles["analyst"],
+        "ROLE_REVIEWER": roles["reviewer"],
+        "ROLE_DEPLOYER": roles["deployer"],
+        "ROLE_ADMIN": roles["admin"],
+        "SEMANTIC_VIEW_NAME": dev["semantic_view_short"],
+        "AGENT_NAME": dev["agent_short"],
+        "EVAL_DATASET_TABLE": ev["dataset_table"],
+    }
+
+
+_TOKEN_RE = re.compile(r"\{\{([A-Z_]+)\}\}")
+_SQL_TOKENS = None
+
+
+def get_sql_tokens() -> dict:
+    global _SQL_TOKENS
+    if _SQL_TOKENS is None:
+        _SQL_TOKENS = build_sql_tokens(load_env_config())
+    return _SQL_TOKENS
+
+
+def render_sql(text: str, tokens: dict = None) -> str:
+    """Replace {{TOKEN}} placeholders from config. Fails loudly on any unresolved token.
+
+    The strict [A-Z_] pattern never matches JSON object literals ({"k": ...}) in the SQL.
+    """
+    tokens = tokens if tokens is not None else get_sql_tokens()
+
+    def repl(m):
+        key = m.group(1)
+        if key not in tokens:
+            raise KeyError(f"Unresolved SQL token {{{{{key}}}}}")
+        return tokens[key]
+
+    rendered = _TOKEN_RE.sub(repl, text)
+    leftover = _TOKEN_RE.findall(rendered)
+    if leftover:
+        raise KeyError(f"Unresolved SQL tokens: {sorted(set(leftover))}")
+    return rendered
+
+
 def get_connection():
     if os.getenv("SNOWFLAKE_ACCOUNT") and os.getenv("SNOWFLAKE_USER"):
         kwargs = {
@@ -231,6 +291,10 @@ def run_sql_file(conn, filepath, description):
     with open(filepath) as f:
         sql = f.read()
 
+    # Render {{TOKEN}} placeholders from config FIRST, so the USE-stripping
+    # regexes below (which match real identifiers) still apply.
+    sql = render_sql(sql)
+
     sql_clean = re.sub(r"(?i)^\s*USE\s+ROLE\s+\w+\s*;", "", sql, flags=re.MULTILINE)
     sql_clean = re.sub(r"(?i)^\s*USE\s+WAREHOUSE\s+\w+\s*;", "", sql_clean, flags=re.MULTILINE)
     sql_clean = re.sub(r"(?i)^\s*USE\s+DATABASE\s+\w+\s*;", "", sql_clean, flags=re.MULTILINE)
@@ -266,27 +330,40 @@ def deploy_semantic_view(conn):
     print(f"\n{'='*60}")
     print(f"  Deploying DEV Semantic View")
     print(f"{'='*60}")
-    sv_path = os.path.join(PROJECT_ROOT, "semantic_views", "dev", "retail_analytics_sv.yaml")
-    with open(sv_path) as f:
-        yaml_content = f.read()
-    conn.cursor().execute(
-        "CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML('RETAIL_AI_DEV.SEMANTIC', %s)",
-        (yaml_content,),
-    )
-    print("  OK: RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV")
+    import deploy as deploy_mod
+    where = deploy_mod.deploy_semantic_view(conn, "dev")
+    print(f"  OK: {where}")
 
 
 def deploy_agent(conn):
     print(f"\n{'='*60}")
     print(f"  Deploying DEV Agent")
     print(f"{'='*60}")
-    agent_path = os.path.join(PROJECT_ROOT, "agents", "dev", "retail_agent.sql")
-    with open(agent_path) as f:
-        sql = f.read()
-    lines = [l for l in sql.split("\n") if not l.strip().startswith("--")]
-    full_sql = "\n".join(lines).strip().rstrip(";")
-    conn.cursor().execute(full_sql)
-    print("  OK: RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT")
+    import deploy as deploy_mod
+    where = deploy_mod.deploy_agent(conn, "dev")
+    print(f"  OK: deployed agent from {where}")
+
+
+def transfer_ci_ownership(conn):
+    """Hand the CI-managed DEV objects to the deployer role so CI (running as that
+    role) can CREATE OR REPLACE them. bootstrap runs as an admin role and would
+    otherwise own them, blocking the deployer's redeploys (see #22/#34)."""
+    cfg = load_env_config()
+    dev = cfg["environments"]["dev"]
+    deployer = cfg["roles"]["deployer"]
+    db, sem = dev["database"], dev["semantic_schema"]
+    objects = [
+        ("AGENT", f"{db}.{sem}.{dev['agent_short']}"),
+        ("SEMANTIC VIEW", f"{db}.{sem}.{dev['semantic_view_short']}"),
+    ]
+    print(f"\n{'='*60}\n  Transferring CI object ownership -> {deployer}\n{'='*60}")
+    cur = conn.cursor()
+    for obj_type, fqn in objects:
+        try:
+            cur.execute(f"GRANT OWNERSHIP ON {obj_type} {fqn} TO ROLE {deployer} COPY CURRENT GRANTS")
+            print(f"  OK: {fqn} -> {deployer}")
+        except Exception as e:
+            print(f"  WARN: ownership {fqn}: {str(e)[:100]}")
 
 
 def run_first_eval(conn):
@@ -295,7 +372,7 @@ def run_first_eval(conn):
     print(f"{'='*60}")
     try:
         audit_path = os.path.join(PROJECT_ROOT, "evaluation", "audit_semantic_view.py")
-        ddl_path = os.path.join(PROJECT_ROOT, "semantic_views", "dev", "retail_analytics_sv.yaml")
+        ddl_path = os.path.join(PROJECT_ROOT, load_env_config()["environments"]["dev"]["sv_yaml_path"])
         output_path = os.path.join(PROJECT_ROOT, "first_eval_audit.json")
 
         import subprocess
@@ -353,9 +430,15 @@ def create_tasks_directly(cur, schedule_profile="demo"):
     )
     credits_expr = "CASE " + " ".join(case_parts) + " END"
 
+    # Config-derived names (genericize embedded SQL)
+    ev = config["eval"]; envs = config["environments"]
+    db_eval = ev["database"]; wh = ev["warehouse"]
+    mon = ev["monitoring_schema"]; obs = ev["observability_schema"]
+    db_prod = envs["prod"]["database"]; sem = envs["prod"]["semantic_schema"]
+
     tasks = [
         ("TASK_DAILY_USAGE_AGGREGATION", schedules["usage_aggregation"]["schedule"], f"""
-            INSERT INTO RETAIL_AI_EVAL.MONITORING.USAGE_METRICS (
+            INSERT INTO {db_eval}.{mon}.USAGE_METRICS (
                 metric_date, environment, service_type, agent_or_sv_name,
                 total_requests, successful_requests, failed_requests,
                 total_input_tokens, total_output_tokens, total_tokens,
@@ -369,16 +452,16 @@ def create_tasks_directly(cur, schedule_profile="demo"):
                 SUM({credits_expr}), AVG(planning_duration_ms),
                 APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
                 APPROX_PERCENTILE(planning_duration_ms,0.99), 0
-            FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
+            FROM {db_eval}.{obs}.AGENT_TRACES
             WHERE event_time >= DATEADD('hour',-24,CURRENT_TIMESTAMP())
               AND (span_name LIKE 'ReasoningAgentStepPlanning%' OR span_name LIKE 'CodingAgent.Step%' OR span_name ILIKE '%Analyst%')
             GROUP BY 1,2,3,4"""),
-        ("TASK_DAILY_FEEDBACK_ANALYSIS", schedules["feedback_analysis"]["schedule"], """
-            UPDATE RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
+        ("TASK_DAILY_FEEDBACK_ANALYSIS", schedules["feedback_analysis"]["schedule"], f"""
+            UPDATE {db_eval}.{mon}.USER_FEEDBACK
             SET sentiment_score = SNOWFLAKE.CORTEX.SENTIMENT(COALESCE(feedback_text,'') || ' Rating: ' || feedback_rating::STRING)
             WHERE sentiment_score IS NULL AND (feedback_text IS NOT NULL OR feedback_rating IS NOT NULL)"""),
-        ("TASK_DAILY_HEALTH_CHECKS", schedules["health_checks"]["schedule"], """
-            INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
+        ("TASK_DAILY_HEALTH_CHECKS", schedules["health_checks"]["schedule"], f"""
+            INSERT INTO {db_eval}.{mon}.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
             SELECT 'error_rate', 'prod', 'ALL_SERVICES',
                 CASE WHEN ROUND(COUNT_IF(RECORD:status.code::STRING != 'STATUS_CODE_OK')*100.0/NULLIF(COUNT(*),0),2) > 20 THEN 'UNHEALTHY'
                      WHEN ROUND(COUNT_IF(RECORD:status.code::STRING != 'STATUS_CODE_OK')*100.0/NULLIF(COUNT(*),0),2) > 5 THEN 'DEGRADED'
@@ -391,20 +474,20 @@ def create_tasks_directly(cur, schedule_profile="demo"):
 
     for name, schedule, body in tasks:
         try:
-            cur.execute(f"""CREATE OR REPLACE TASK RETAIL_AI_EVAL.MONITORING.{name}
-                WAREHOUSE = RETAIL_AI_EVAL_WH SCHEDULE = '{schedule}' AS {body}""")
-            cur.execute(f"ALTER TASK RETAIL_AI_EVAL.MONITORING.{name} RESUME")
+            cur.execute(f"""CREATE OR REPLACE TASK {db_eval}.{mon}.{name}
+                WAREHOUSE = {wh} SCHEDULE = '{schedule}' AS {body}""")
+            cur.execute(f"ALTER TASK {db_eval}.{mon}.{name} RESUME")
             print(f"  OK: {name}")
         except Exception as e:
             print(f"  WARN: {name}: {str(e)[:100]}")
 
     procs = {
         "SP_WEEKLY_SV_EVAL": """
-CREATE OR REPLACE PROCEDURE RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_SV_EVAL()
+CREATE OR REPLACE PROCEDURE {{DB_EVAL}}.MONITORING.SP_WEEKLY_SV_EVAL()
 RETURNS STRING LANGUAGE SQL EXECUTE AS CALLER AS
 $$
 BEGIN
-    LET sv_name STRING := 'RETAIL_AI_PROD.SEMANTIC.RETAIL_ANALYTICS_SV';
+    LET sv_name STRING := '{{DB_PROD}}.SEMANTIC.{{SEMANTIC_VIEW_NAME}}';
     LET start_ts TIMESTAMP_NTZ := CURRENT_TIMESTAMP();
     LET status STRING := 'HEALTHY';
     LET details STRING := '';
@@ -413,26 +496,26 @@ BEGIN
         LET stmt STRING := 'DESCRIBE SEMANTIC VIEW ' || :sv_name;
         EXECUTE IMMEDIATE :stmt;
         LET latency INTEGER := DATEDIFF('millisecond', :start_ts, CURRENT_TIMESTAMP());
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
+        INSERT INTO {{DB_EVAL}}.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
         SELECT 'weekly_sv_smoke_test','prod',:sv_name,100,0,TRUE,1,1,0, OBJECT_CONSTRUCT('check','sv_exists','latency_ms', :latency);
         details := 'Passed in ' || :latency || 'ms';
     EXCEPTION WHEN OTHER THEN
         LET err STRING := SQLERRM;
         status := 'UNHEALTHY'; details := 'Failed: ' || :err;
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
+        INSERT INTO {{DB_EVAL}}.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
         SELECT 'weekly_sv_smoke_test','prod',:sv_name,0,0,FALSE,1,0,1, OBJECT_CONSTRUCT('error', :err);
     END;
-    INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
+    INSERT INTO {{DB_EVAL}}.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
     VALUES ('weekly_sv_smoke_test','prod',:sv_name,:status,:details,0);
     RETURN :status || ': ' || :details;
 END;
 $$""",
         "SP_WEEKLY_AGENT_EVAL": """
-CREATE OR REPLACE PROCEDURE RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_AGENT_EVAL()
+CREATE OR REPLACE PROCEDURE {{DB_EVAL}}.MONITORING.SP_WEEKLY_AGENT_EVAL()
 RETURNS STRING LANGUAGE SQL EXECUTE AS CALLER AS
 $$
 BEGIN
-    LET agent_name STRING := 'RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT';
+    LET agent_name STRING := '{{DB_PROD}}.SEMANTIC.{{AGENT_NAME}}';
     LET start_ts TIMESTAMP_NTZ := CURRENT_TIMESTAMP();
     LET status STRING := 'HEALTHY';
     LET details STRING := '';
@@ -441,16 +524,16 @@ BEGIN
         LET stmt STRING := 'DESCRIBE AGENT ' || :agent_name;
         EXECUTE IMMEDIATE :stmt;
         LET latency INTEGER := DATEDIFF('millisecond', :start_ts, CURRENT_TIMESTAMP());
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
+        INSERT INTO {{DB_EVAL}}.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
         SELECT 'weekly_agent_smoke_test','prod',:agent_name,100,0,TRUE,1,1,0, OBJECT_CONSTRUCT('check','agent_exists','latency_ms', :latency);
         details := 'Passed in ' || :latency || 'ms';
     EXCEPTION WHEN OTHER THEN
         LET err STRING := SQLERRM;
         status := 'UNHEALTHY'; details := 'Failed: ' || :err;
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
+        INSERT INTO {{DB_EVAL}}.MONITORING.SCHEDULED_EVAL_RUNS (run_type, environment, target_name, accuracy_pct, threshold_pct, passed_threshold, total_questions, passed_questions, failed_questions, run_details)
         SELECT 'weekly_agent_smoke_test','prod',:agent_name,0,0,FALSE,1,0,1, OBJECT_CONSTRUCT('error', :err);
     END;
-    INSERT INTO RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
+    INSERT INTO {{DB_EVAL}}.MONITORING.HEALTH_CHECK_RESULTS (check_name, environment, target_name, status, details, latency_ms)
     VALUES ('weekly_agent_smoke_test','prod',:agent_name,:status,:details,0);
     RETURN :status || ': ' || :details;
 END;
@@ -458,21 +541,21 @@ $$""",
     }
 
     weekly_tasks = [
-        ("TASK_WEEKLY_SV_EVAL", schedules["weekly_sv_eval"]["schedule"], "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_SV_EVAL()"),
-        ("TASK_WEEKLY_AGENT_EVAL", schedules["weekly_agent_eval"]["schedule"], "CALL RETAIL_AI_EVAL.MONITORING.SP_WEEKLY_AGENT_EVAL()"),
+        ("TASK_WEEKLY_SV_EVAL", schedules["weekly_sv_eval"]["schedule"], f"CALL {db_eval}.{mon}.SP_WEEKLY_SV_EVAL()"),
+        ("TASK_WEEKLY_AGENT_EVAL", schedules["weekly_agent_eval"]["schedule"], f"CALL {db_eval}.{mon}.SP_WEEKLY_AGENT_EVAL()"),
     ]
 
     for name, sql in procs.items():
         try:
-            cur.execute(sql)
+            cur.execute(render_sql(sql))
             print(f"  OK: {name}")
         except Exception as e:
             print(f"  WARN: {name}: {str(e)[:100]}")
 
     for name, schedule, body in weekly_tasks:
         try:
-            cur.execute(f"CREATE OR REPLACE TASK RETAIL_AI_EVAL.MONITORING.{name} WAREHOUSE = RETAIL_AI_EVAL_WH SCHEDULE = '{schedule}' AS {body}")
-            cur.execute(f"ALTER TASK RETAIL_AI_EVAL.MONITORING.{name} RESUME")
+            cur.execute(f"CREATE OR REPLACE TASK {db_eval}.{mon}.{name} WAREHOUSE = {wh} SCHEDULE = '{schedule}' AS {body}")
+            cur.execute(f"ALTER TASK {db_eval}.{mon}.{name} RESUME")
             print(f"  OK: {name}")
         except Exception as e:
             print(f"  WARN: {name}: {str(e)[:100]}")
@@ -827,6 +910,8 @@ def main():
     print(f"  User:     {user}")
     print(f"  Role:     {role}")
 
+    wh = load_env_config()["eval"]["warehouse"]
+
     if not args.skip_sql:
         sql_scripts = [
             ("setup/01_create_databases.sql", "Step 1/11: Create databases and eval tables"),
@@ -842,8 +927,8 @@ def main():
             ("setup/11_interaction_quality_engine.sql", "Step 11/11: Create interaction quality engine"),
         ]
 
-        cur.execute("CREATE WAREHOUSE IF NOT EXISTS RETAIL_AI_EVAL_WH WAREHOUSE_SIZE = 'XSMALL' AUTO_SUSPEND = 60 AUTO_RESUME = TRUE")
-        cur.execute("USE WAREHOUSE RETAIL_AI_EVAL_WH")
+        cur.execute(f"CREATE WAREHOUSE IF NOT EXISTS {wh} WAREHOUSE_SIZE = 'XSMALL' AUTO_SUSPEND = 60 AUTO_RESUME = TRUE")
+        cur.execute(f"USE WAREHOUSE {wh}")
 
         for script, desc in sql_scripts:
             filepath = os.path.join(PROJECT_ROOT, script)
@@ -855,10 +940,10 @@ def main():
         create_tasks_directly(cur, schedule_profile=args.schedule_profile)
     else:
         print("\n  Skipping SQL setup (--skip-sql)")
-        cur.execute("USE WAREHOUSE RETAIL_AI_EVAL_WH")
+        cur.execute(f"USE WAREHOUSE {wh}")
 
     if not args.skip_sql:
-        cur.execute(f"ALTER USER {user} SET DEFAULT_WAREHOUSE = 'RETAIL_AI_EVAL_WH'")
+        cur.execute(f"ALTER USER {user} SET DEFAULT_WAREHOUSE = '{wh}'")
 
     if not args.skip_deploy:
         try:
@@ -869,6 +954,7 @@ def main():
             deploy_agent(conn)
         except Exception as e:
             print(f"  WARN: Agent deploy: {str(e)[:120]}")
+        transfer_ci_ownership(conn)
 
     if not args.skip_eval:
         run_first_eval(conn)
