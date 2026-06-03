@@ -42,6 +42,66 @@ def load_schedule_config(profile: str = "demo") -> dict:
     return profiles[profile]["tasks"]
 
 
+def load_env_config() -> dict:
+    with open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")) as f:
+        return yaml.safe_load(f)
+
+
+def build_sql_tokens(cfg: dict) -> dict:
+    """Map {{TOKEN}} placeholders in the infra SQL to config values."""
+    envs = cfg["environments"]
+    dev, prod, ev, roles = envs["dev"], envs["prod"], cfg["eval"], cfg["roles"]
+    return {
+        "DB_DEV": dev["database"],
+        "DB_PROD": prod["database"],
+        "DB_EVAL": ev["database"],
+        "WAREHOUSE": ev["warehouse"],
+        "SCHEMA_ANALYTICS": dev["schema"],
+        "SCHEMA_SEMANTIC": dev["semantic_schema"],
+        "SCHEMA_RESULTS": ev["schema"],
+        "SCHEMA_OBSERVABILITY": ev["observability_schema"],
+        "SCHEMA_MONITORING": ev["monitoring_schema"],
+        "ROLE_ANALYST": roles["analyst"],
+        "ROLE_REVIEWER": roles["reviewer"],
+        "ROLE_DEPLOYER": roles["deployer"],
+        "ROLE_ADMIN": roles["admin"],
+        "SEMANTIC_VIEW_NAME": dev["semantic_view_short"],
+        "AGENT_NAME": dev["agent_short"],
+        "EVAL_DATASET_TABLE": ev["dataset_table"],
+    }
+
+
+_TOKEN_RE = re.compile(r"\{\{([A-Z_]+)\}\}")
+_SQL_TOKENS = None
+
+
+def get_sql_tokens() -> dict:
+    global _SQL_TOKENS
+    if _SQL_TOKENS is None:
+        _SQL_TOKENS = build_sql_tokens(load_env_config())
+    return _SQL_TOKENS
+
+
+def render_sql(text: str, tokens: dict = None) -> str:
+    """Replace {{TOKEN}} placeholders from config. Fails loudly on any unresolved token.
+
+    The strict [A-Z_] pattern never matches JSON object literals ({"k": ...}) in the SQL.
+    """
+    tokens = tokens if tokens is not None else get_sql_tokens()
+
+    def repl(m):
+        key = m.group(1)
+        if key not in tokens:
+            raise KeyError(f"Unresolved SQL token {{{{{key}}}}}")
+        return tokens[key]
+
+    rendered = _TOKEN_RE.sub(repl, text)
+    leftover = _TOKEN_RE.findall(rendered)
+    if leftover:
+        raise KeyError(f"Unresolved SQL tokens: {sorted(set(leftover))}")
+    return rendered
+
+
 def get_connection():
     if os.getenv("SNOWFLAKE_ACCOUNT") and os.getenv("SNOWFLAKE_USER"):
         kwargs = {
@@ -230,6 +290,10 @@ def run_sql_file(conn, filepath, description):
 
     with open(filepath) as f:
         sql = f.read()
+
+    # Render {{TOKEN}} placeholders from config FIRST, so the USE-stripping
+    # regexes below (which match real identifiers) still apply.
+    sql = render_sql(sql)
 
     sql_clean = re.sub(r"(?i)^\s*USE\s+ROLE\s+\w+\s*;", "", sql, flags=re.MULTILINE)
     sql_clean = re.sub(r"(?i)^\s*USE\s+WAREHOUSE\s+\w+\s*;", "", sql_clean, flags=re.MULTILINE)

@@ -24,14 +24,14 @@
 -- ============================================================================
 
 USE ROLE SYSADMIN;
-USE WAREHOUSE RETAIL_AI_EVAL_WH;
-USE DATABASE RETAIL_AI_EVAL;
+USE WAREHOUSE {{WAREHOUSE}};
+USE DATABASE {{DB_EVAL}};
 
 -- ============================================================
 -- VIEW: Per-request quality signals
 -- One row per trace_id with computed quality metrics
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_REQUEST_QUALITY_SIGNALS AS
 WITH request_spans AS (
     SELECT
         TRACE:trace_id::STRING                                                              AS trace_id,
@@ -104,7 +104,7 @@ GROUP BY r.trace_id;
 -- VIEW: Per-thread (conversation) quality signals
 -- Detects abandonment, struggling users, single-turn drop-offs
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_THREAD_QUALITY_SIGNALS AS
 WITH thread_turns AS (
     SELECT
         RECORD_ATTRIBUTES:"snow.ai.observability.agent.thread_id"::STRING   AS thread_id,
@@ -166,7 +166,7 @@ FROM thread_summary;
 -- ============================================================
 -- VIEW: All flagged interactions (union of request + thread flags)
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_FLAGS AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_FLAGS AS
 
 SELECT signal_source, interaction_id, thread_id, environment,
        agent_name, user_query, event_time, total_duration_ms,
@@ -197,7 +197,7 @@ FROM (
             WHEN flag_slow_request OR flag_high_token_burn THEN 'WARNING'
             ELSE 'INFO'
         END AS severity
-    FROM RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS
+    FROM {{DB_EVAL}}.MONITORING.V_REQUEST_QUALITY_SIGNALS
     WHERE flag_count > 0
 ) sub
 WHERE agent_name IS NOT NULL;
@@ -205,7 +205,7 @@ WHERE agent_name IS NOT NULL;
 -- ============================================================
 -- TABLE: Daily interaction quality summary
 -- ============================================================
-CREATE TABLE IF NOT EXISTS RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY (
+CREATE TABLE IF NOT EXISTS {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY (
     summary_date            DATE,
     environment             STRING,
     agent_name              STRING,
@@ -230,24 +230,24 @@ CREATE TABLE IF NOT EXISTS RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY (
 -- ============================================================
 -- TASK: Daily interaction quality scan
 -- ============================================================
-CREATE OR REPLACE TASK RETAIL_AI_EVAL.MONITORING.TASK_DAILY_INTERACTION_QUALITY
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE TASK {{DB_EVAL}}.MONITORING.TASK_DAILY_INTERACTION_QUALITY
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 30 2 * * * UTC'
     COMMENT = 'Daily scan of agent interactions for quality issues using rules engine'
 AS
 BEGIN
     -- Insert request-level summary
-    MERGE INTO RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY tgt
+    MERGE INTO {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY tgt
     USING (
         WITH yesterday_requests AS (
             SELECT *
-            FROM RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS
+            FROM {{DB_EVAL}}.MONITORING.V_REQUEST_QUALITY_SIGNALS
             WHERE request_start >= DATEADD('day', -1, CURRENT_DATE())
               AND request_start < CURRENT_DATE()
         ),
         yesterday_threads AS (
             SELECT *
-            FROM RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS
+            FROM {{DB_EVAL}}.MONITORING.V_THREAD_QUALITY_SIGNALS
             WHERE last_turn >= DATEADD('day', -1, CURRENT_DATE())
               AND last_turn < CURRENT_DATE()
         )
@@ -338,24 +338,24 @@ BEGIN
     );
 END;
 
-ALTER TASK RETAIL_AI_EVAL.MONITORING.TASK_DAILY_INTERACTION_QUALITY RESUME;
+ALTER TASK {{DB_EVAL}}.MONITORING.TASK_DAILY_INTERACTION_QUALITY RESUME;
 
 -- ============================================================
 -- ALERT: Interaction quality degradation
 -- Fires if >20% of requests are flagged OR any critical flags
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_INTERACTION_QUALITY
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_INTERACTION_QUALITY
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 7 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY
+        FROM {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY
         WHERE summary_date = CURRENT_DATE() - 1
           AND (flagged_request_pct > 20 OR critical_count > 0)
           AND total_requests >= 5
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'interaction_quality',
@@ -374,18 +374,18 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_INTERACTION_QUALITY
                 ', Rephrasing: ' || rapid_rephrasing_count,
             flagged_request_pct,
             20
-        FROM RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY
+        FROM {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY
         WHERE summary_date = CURRENT_DATE() - 1
           AND (flagged_request_pct > 20 OR critical_count > 0)
           AND total_requests >= 5;
 
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_INTERACTION_QUALITY RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_INTERACTION_QUALITY RESUME;
 
 -- ============================================================
 -- VIEW: Interaction quality dashboard
 -- Combines daily trends + current flagged interactions
 -- ============================================================
-CREATE OR REPLACE VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_DASHBOARD AS
+CREATE OR REPLACE VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_DASHBOARD AS
 SELECT
     summary_date,
     environment,
@@ -419,23 +419,23 @@ SELECT
         ORDER BY summary_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS rolling_7d_user_struggle_count
-FROM RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY;
+FROM {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY;
 
 -- ============================================================
 -- Grants
 -- ============================================================
 USE ROLE SECURITYADMIN;
 
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_FLAGS TO ROLE RETAIL_AI_ADMIN;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_DASHBOARD TO ROLE RETAIL_AI_ADMIN;
-GRANT ALL PRIVILEGES ON TABLE RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE RETAIL_AI_ADMIN;
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_REQUEST_QUALITY_SIGNALS TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_THREAD_QUALITY_SIGNALS TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_FLAGS TO ROLE {{ROLE_ADMIN}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_DASHBOARD TO ROLE {{ROLE_ADMIN}};
+GRANT ALL PRIVILEGES ON TABLE {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE {{ROLE_ADMIN}};
 
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_REQUEST_QUALITY_SIGNALS TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_THREAD_QUALITY_SIGNALS TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_FLAGS TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON VIEW RETAIL_AI_EVAL.MONITORING.V_INTERACTION_QUALITY_DASHBOARD TO ROLE RETAIL_AI_REVIEWER;
-GRANT SELECT ON TABLE RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE RETAIL_AI_REVIEWER;
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_REQUEST_QUALITY_SIGNALS TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_THREAD_QUALITY_SIGNALS TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_FLAGS TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON VIEW {{DB_EVAL}}.MONITORING.V_INTERACTION_QUALITY_DASHBOARD TO ROLE {{ROLE_REVIEWER}};
+GRANT SELECT ON TABLE {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE {{ROLE_REVIEWER}};
 
-GRANT INSERT, SELECT ON TABLE RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE RETAIL_AI_DEPLOYER;
+GRANT INSERT, SELECT ON TABLE {{DB_EVAL}}.MONITORING.INTERACTION_QUALITY_DAILY TO ROLE {{ROLE_DEPLOYER}};

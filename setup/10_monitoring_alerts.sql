@@ -13,25 +13,25 @@
 -- ============================================================================
 
 USE ROLE SYSADMIN;
-USE WAREHOUSE RETAIL_AI_EVAL_WH;
-USE DATABASE RETAIL_AI_EVAL;
+USE WAREHOUSE {{WAREHOUSE}};
+USE DATABASE {{DB_EVAL}};
 
 -- ============================================================
 -- ALERT 1: Negative feedback spike
 -- Fires when >25% of yesterday's feedback is negative (rating <= 2)
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 7 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.FEEDBACK_DAILY_SUMMARY
+        FROM {{DB_EVAL}}.MONITORING.FEEDBACK_DAILY_SUMMARY
         WHERE summary_date = CURRENT_DATE() - 1
           AND negative_pct > 25
           AND total_feedback >= 5
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'negative_feedback_spike',
@@ -43,7 +43,7 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE
                 '. Avg rating: ' || ROUND(avg_rating, 1),
             negative_pct,
             25
-        FROM RETAIL_AI_EVAL.MONITORING.FEEDBACK_DAILY_SUMMARY
+        FROM {{DB_EVAL}}.MONITORING.FEEDBACK_DAILY_SUMMARY
         WHERE summary_date = CURRENT_DATE() - 1
           AND negative_pct > 25
           AND total_feedback >= 5;
@@ -52,18 +52,18 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE
 -- ALERT 2: Accuracy regression
 -- Fires when any eval run shows >10% accuracy drop from previous
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ACCURACY_REGRESSION
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_ACCURACY_REGRESSION
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 8 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.V_EVAL_ACCURACY_TREND
+        FROM {{DB_EVAL}}.MONITORING.V_EVAL_ACCURACY_TREND
         WHERE eval_date >= CURRENT_DATE() - 1
           AND accuracy_delta < -10
           AND prev_accuracy_pct IS NOT NULL
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'accuracy_regression',
@@ -74,7 +74,7 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ACCURACY_REGRESSION
                 ROUND(prev_accuracy_pct, 1) || '%, delta: ' || ROUND(accuracy_delta, 1) || '%)',
             accuracy_delta,
             -10
-        FROM RETAIL_AI_EVAL.MONITORING.V_EVAL_ACCURACY_TREND
+        FROM {{DB_EVAL}}.MONITORING.V_EVAL_ACCURACY_TREND
         WHERE eval_date >= CURRENT_DATE() - 1
           AND accuracy_delta < -10
           AND prev_accuracy_pct IS NOT NULL;
@@ -83,17 +83,17 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ACCURACY_REGRESSION
 -- ALERT 3: Latency degradation
 -- Fires when P95 latency exceeds 30 seconds
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_LATENCY_DEGRADATION
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_LATENCY_DEGRADATION
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 7 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
+        FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS
         WHERE metric_date = CURRENT_DATE() - 1
           AND p95_latency_ms > 30000
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'latency_degradation',
@@ -104,7 +104,7 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_LATENCY_DEGRADATION
                 's (avg: ' || ROUND(avg_latency_ms / 1000, 1) || 's) on ' || metric_date::STRING,
             p95_latency_ms,
             30000
-        FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
+        FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS
         WHERE metric_date = CURRENT_DATE() - 1
           AND p95_latency_ms > 30000;
 
@@ -112,18 +112,18 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_LATENCY_DEGRADATION
 -- ALERT 4: Cost anomaly
 -- Fires when daily cost exceeds 2x the 7-day rolling average
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_COST_ANOMALY
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 7 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND
+        FROM {{DB_EVAL}}.MONITORING.V_TOKEN_COST_TREND
         WHERE metric_date = CURRENT_DATE() - 1
           AND rolling_7d_credits > 0
           AND estimated_credits > (rolling_7d_credits / 7.0) * 2
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'cost_anomaly',
@@ -138,7 +138,7 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY
                 ', ' || ROUND(estimated_credits / NULLIF(rolling_7d_credits / 7.0, 0), 1) || 'x normal)',
             estimated_credits,
             ROUND(rolling_7d_credits / 7.0 * 2, 4)
-        FROM RETAIL_AI_EVAL.MONITORING.V_TOKEN_COST_TREND
+        FROM {{DB_EVAL}}.MONITORING.V_TOKEN_COST_TREND
         WHERE metric_date = CURRENT_DATE() - 1
           AND rolling_7d_credits > 0
           AND estimated_credits > (rolling_7d_credits / 7.0) * 2;
@@ -147,18 +147,18 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY
 -- ALERT 5: Agent error spike
 -- Fires when error rate exceeds 10% on any day
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ERROR_SPIKE
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_ERROR_SPIKE
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 0 7 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
+        FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS
         WHERE metric_date = CURRENT_DATE() - 1
           AND total_requests >= 10
           AND ROUND(failed_requests * 100.0 / NULLIF(total_requests, 0), 2) > 10
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'error_spike',
@@ -173,7 +173,7 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ERROR_SPIKE
                 '% (' || failed_requests || ' failures / ' || total_requests || ' total)',
             ROUND(failed_requests * 100.0 / NULLIF(total_requests, 0), 2),
             10
-        FROM RETAIL_AI_EVAL.MONITORING.USAGE_METRICS
+        FROM {{DB_EVAL}}.MONITORING.USAGE_METRICS
         WHERE metric_date = CURRENT_DATE() - 1
           AND total_requests >= 10
           AND ROUND(failed_requests * 100.0 / NULLIF(total_requests, 0), 2) > 10;
@@ -182,17 +182,17 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ERROR_SPIKE
 -- ALERT 6: Health check failure
 -- Fires when any health check comes back UNHEALTHY
 -- ============================================================
-CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_HEALTH_FAILURE
-    WAREHOUSE = RETAIL_AI_EVAL_WH
+CREATE OR REPLACE ALERT {{DB_EVAL}}.MONITORING.ALERT_HEALTH_FAILURE
+    WAREHOUSE = {{WAREHOUSE}}
     SCHEDULE = 'USING CRON 30 6 * * * UTC'
     IF (EXISTS (
         SELECT 1
-        FROM RETAIL_AI_EVAL.MONITORING.V_HEALTH_DASHBOARD
+        FROM {{DB_EVAL}}.MONITORING.V_HEALTH_DASHBOARD
         WHERE status = 'UNHEALTHY'
           AND checked_at >= DATEADD('hour', -25, CURRENT_TIMESTAMP())
     ))
     THEN
-        INSERT INTO RETAIL_AI_EVAL.MONITORING.ALERT_HISTORY
+        INSERT INTO {{DB_EVAL}}.MONITORING.ALERT_HISTORY
             (alert_type, severity, environment, target_name, message, metric_value, threshold_value)
         SELECT
             'health_failure',
@@ -202,19 +202,19 @@ CREATE OR REPLACE ALERT RETAIL_AI_EVAL.MONITORING.ALERT_HEALTH_FAILURE
             'Health check FAILED: ' || check_name || ' - ' || details,
             0,
             0
-        FROM RETAIL_AI_EVAL.MONITORING.V_HEALTH_DASHBOARD
+        FROM {{DB_EVAL}}.MONITORING.V_HEALTH_DASHBOARD
         WHERE status = 'UNHEALTHY'
           AND checked_at >= DATEADD('hour', -25, CURRENT_TIMESTAMP());
 
 -- ============================================================
 -- Resume all alerts
 -- ============================================================
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE RESUME;
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ACCURACY_REGRESSION RESUME;
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_LATENCY_DEGRADATION RESUME;
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_COST_ANOMALY RESUME;
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_ERROR_SPIKE RESUME;
-ALTER ALERT RETAIL_AI_EVAL.MONITORING.ALERT_HEALTH_FAILURE RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_NEGATIVE_FEEDBACK_SPIKE RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_ACCURACY_REGRESSION RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_LATENCY_DEGRADATION RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_COST_ANOMALY RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_ERROR_SPIKE RESUME;
+ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_HEALTH_FAILURE RESUME;
 
 -- ============================================================
 -- Optional: Email notification integration
