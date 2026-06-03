@@ -344,6 +344,28 @@ def deploy_agent(conn):
     print(f"  OK: deployed agent from {where}")
 
 
+def transfer_ci_ownership(conn):
+    """Hand the CI-managed DEV objects to the deployer role so CI (running as that
+    role) can CREATE OR REPLACE them. bootstrap runs as an admin role and would
+    otherwise own them, blocking the deployer's redeploys (see #22/#34)."""
+    cfg = load_env_config()
+    dev = cfg["environments"]["dev"]
+    deployer = cfg["roles"]["deployer"]
+    db, sem = dev["database"], dev["semantic_schema"]
+    objects = [
+        ("AGENT", f"{db}.{sem}.{dev['agent_short']}"),
+        ("SEMANTIC VIEW", f"{db}.{sem}.{dev['semantic_view_short']}"),
+    ]
+    print(f"\n{'='*60}\n  Transferring CI object ownership -> {deployer}\n{'='*60}")
+    cur = conn.cursor()
+    for obj_type, fqn in objects:
+        try:
+            cur.execute(f"GRANT OWNERSHIP ON {obj_type} {fqn} TO ROLE {deployer} COPY CURRENT GRANTS")
+            print(f"  OK: {fqn} -> {deployer}")
+        except Exception as e:
+            print(f"  WARN: ownership {fqn}: {str(e)[:100]}")
+
+
 def run_first_eval(conn):
     print(f"\n{'='*60}")
     print(f"  Running First Evaluation (SV audit on DEV)")
@@ -932,6 +954,7 @@ def main():
             deploy_agent(conn)
         except Exception as e:
             print(f"  WARN: Agent deploy: {str(e)[:120]}")
+        transfer_ci_ownership(conn)
 
     if not args.skip_eval:
         run_first_eval(conn)
