@@ -35,7 +35,6 @@ jobs:
         run: |
           set +e
           python evaluation/audit_semantic_view.py \
-            --ddl-file semantic_views/dev/retail_analytics_sv.yaml \
             --output sv_audit_report.json
           EXIT_CODE=$?
           echo "passed=$([ $EXIT_CODE -eq 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
@@ -77,7 +76,6 @@ jobs:
         run: |
           python evaluation/evaluate_semantic_view.py \
             --environment dev \
-            --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV \
             --categories easy,hard,ambiguous \
             --git-sha ${{ github.sha }} \
             --git-branch ${{ github.head_ref }} \

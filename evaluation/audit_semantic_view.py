@@ -34,7 +34,7 @@ import os
 import yaml
 
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import get_connection, execute_sql
+from utils import get_connection, execute_sql, load_config
 
 
 SEVERITY_ORDER = {"CRITICAL": 0, "ERROR": 1, "HIGH": 2, "WARNING": 3, "MEDIUM": 4, "INFO": 5, "LOW": 6}
@@ -503,8 +503,8 @@ def print_report(report: dict):
 
 def main():
     parser = argparse.ArgumentParser(description="Audit a semantic view against best practices")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--ddl-file", help="Path to semantic view DDL file")
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("--ddl-file", help="Path to semantic view DDL file. Defaults to config[environments][env].sv_yaml_path")
     group.add_argument("--live", action="store_true", help="Introspect a deployed semantic view")
     parser.add_argument("--semantic-view", help="Fully qualified semantic view name (required with --live)")
     parser.add_argument("--environment", "-e", default="dev", choices=["dev", "prod"])
@@ -514,10 +514,15 @@ def main():
     if args.live and not args.semantic_view:
         parser.error("--semantic-view is required with --live")
 
-    if args.ddl_file:
-        with open(args.ddl_file, "r") as f:
+    ddl_file = args.ddl_file
+    if not ddl_file and not args.live:
+        # Default to the environment's SV YAML from config.
+        ddl_file = load_config()["environments"][args.environment]["sv_yaml_path"]
+
+    if ddl_file:
+        with open(ddl_file, "r") as f:
             file_text = f.read()
-        if args.ddl_file.endswith(".yaml") or args.ddl_file.endswith(".yml"):
+        if ddl_file.endswith(".yaml") or ddl_file.endswith(".yml"):
             model = parse_yaml(file_text)
         else:
             model = parse_ddl(file_text)
