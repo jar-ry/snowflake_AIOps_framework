@@ -3,6 +3,7 @@
 -- Cortex Agent definition for the Retail Analytics domain
 -- Uses the semantic view for text-to-SQL capabilities
 -- CI/CD: deployed + evaluated via key-pair auth (see setup/deploy.py).
+-- PR-A: eval/deploy now resolve names from config/environments.yaml.
 -- ============================================================================
 
 CREATE OR REPLACE AGENT RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
