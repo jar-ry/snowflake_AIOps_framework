@@ -282,7 +282,8 @@ def mine_traffic(conn, agent_name_short, limit=50):
         FROM {fqn}
         WHERE user_query IS NOT NULL
           AND TRIM(user_query) <> ''
-          AND agent_name = %(agent)s
+          AND UPPER(agent_name) = UPPER(%(agent)s)
+        ORDER BY user_query
         LIMIT {int(limit)}
     """
     rows = execute_sql_bound(conn, sql, {"agent": agent_name_short})
