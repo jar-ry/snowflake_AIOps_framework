@@ -58,7 +58,7 @@ The gap: Everyone monitors agent **output** after the fact. Nobody governs the *
 | Pillar | What | Unique? | Cost |
 |--------|------|---------|------|
 | 1. Structural Audit | 15+ rule checks on semantic view YAML (docs, naming, metadata, relationships, inconsistencies, duplicates) | YES — no competitor does this | Zero (offline Python) |
-| 2. Accuracy Evaluation | Question bank evaluation with graduated CI/CD gates (DEV 60% > PROD 85%) | Partially — wraps Snowflake native EXECUTE_AI_EVALUATION | LLM judge cost (~$5/run) |
+| 2. Accuracy Evaluation | Question bank evaluation with graduated CI/CD gates (DEV 60% > PROD 85%) | Partially — wraps Snowflake native EXECUTE_AI_EVALUATION | ~9 AI Credits/run (35-Q bank) |
 | 3. Interaction Quality | Deterministic rules engine over ai_observability_events (tool looping, excessive steps, token burn, abandoned convos) | YES — zero LLM cost, real-time | Zero (pure SQL) |
 
 ### The Killer Differentiator
@@ -90,7 +90,7 @@ The gap: Everyone monitors agent **output** after the fact. Nobody governs the *
 | Structural audit | 0 findings (clean SV) |
 | Framework caught own GT bugs | 2/35 questions had incorrect ground truth — framework surfaced them |
 | Setup time | One command (`bootstrap.py`), ~5 minutes |
-| Ongoing cost | <$5/evaluation run, XSMALL warehouse |
+| Ongoing cost | ~9 AI Credits/evaluation run (35-Q bank), XSMALL warehouse |
 
 ---
 
