@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'examples/retail/semantic_views/**'
-      - 'examples/retail/question_banks/semantic_view/**'
+      - 'examples/*/semantic_views/**'
+      - 'examples/*/question_banks/semantic_view/**'
 
 permissions:
   contents: read
@@ -21,6 +21,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve active instance from changed files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=100 origin "${{ github.base_ref }}"
+            CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then BEFORE="HEAD~1"; fi
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          fi
+          echo "Changed files:"; echo "$CHANGED"
+          INSTANCES=$(echo "$CHANGED" | grep -oE '^examples/[^/]+/(semantic_views|question_banks/semantic_view)/' | sed -E 's#/(semantic_views|question_banks)/.*##' | sort -u)
+          COUNT=$(printf '%s\n' "$INSTANCES" | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then echo "No example semantic-view change detected."; exit 1; fi
+          if [ "$COUNT" -gt 1 ]; then echo "WARNING: multiple instances changed; using the first:"; echo "$INSTANCES"; fi
+          INSTANCE=$(printf '%s\n' "$INSTANCES" | head -1)
+          echo "AIOPS_INSTANCE=$INSTANCE" >> "$GITHUB_ENV"
+          echo "Resolved AIOPS_INSTANCE=$INSTANCE"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -52,7 +73,6 @@ jobs:
     needs: [audit-semantic-view]
     runs-on: ubuntu-latest
     env:
-      AIOPS_INSTANCE: examples/retail
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
@@ -61,6 +81,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve active instance from changed files
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=100 origin "${{ github.base_ref }}"
+            CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then BEFORE="HEAD~1"; fi
+            CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          fi
+          echo "Changed files:"; echo "$CHANGED"
+          INSTANCES=$(echo "$CHANGED" | grep -oE '^examples/[^/]+/(semantic_views|question_banks/semantic_view)/' | sed -E 's#/(semantic_views|question_banks)/.*##' | sort -u)
+          COUNT=$(printf '%s\n' "$INSTANCES" | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then echo "No example semantic-view change detected."; exit 1; fi
+          if [ "$COUNT" -gt 1 ]; then echo "WARNING: multiple instances changed; using the first:"; echo "$INSTANCES"; fi
+          INSTANCE=$(printf '%s\n' "$INSTANCES" | head -1)
+          echo "AIOPS_INSTANCE=$INSTANCE" >> "$GITHUB_ENV"
+          echo "Resolved AIOPS_INSTANCE=$INSTANCE"
 
       - name: Set up Python
         uses: actions/setup-python@v5
