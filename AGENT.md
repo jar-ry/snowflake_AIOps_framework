@@ -109,7 +109,7 @@ ai_evaluation_framework/
 
 **Layer 1 — Audits (structural quality gate):**
 - `audit_semantic_view.py`: Parses DDL, checks documentation, naming, metadata, relationships, inconsistencies, duplicates. Severity-based pass/fail (CRITICAL/ERROR = fail).
-- `audit_agent.py`: Uses Snowflake's native `EXECUTE_AI_EVALUATION` with GPA framework metrics (`answer_correctness`, `logical_consistency`) plus custom metrics (`safety`, `groundedness`, `execution_efficiency`). Requires VARIANT-typed `ground_truth` column with `PARSE_JSON`.
+- `audit_agent.py`: Uses Snowflake's native `EXECUTE_AI_EVALUATION` with GPA framework metrics (`answer_correctness`, `logical_consistency`) plus custom LLM-judged metrics (`safety`, `groundedness`, `execution_efficiency`, `answer_relevance`, `conciseness`, `pii_leakage`). The metric set is configurable per environment via `thresholds.yaml` (`agent.<env>.metrics`). Also derives deterministic non-judge signals (latency, tokens, LLM-call count, estimated credits) from the eval results table as warn-only checks. Requires VARIANT-typed `ground_truth` column with `PARSE_JSON`.
 
 **Layer 2 — Question Bank Evaluation (accuracy gate):**
 - `evaluate_semantic_view.py`: Calls Cortex Analyst, compares generated SQL results to ground truth, uses LLM judge for ambiguous questions.

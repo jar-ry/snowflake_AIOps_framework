@@ -19,6 +19,18 @@ semantic_view:
 
 agent:
   default:
+    # Judge-metric set evaluated per run. Each metric is one LLM-judge call per
+    # question (a cost lever -- see docs/reference/cost-model.md). The framework
+    # resolves the set as: CLI --metrics > agent.<env>.metrics > agent.default.metrics.
+    metrics:
+      - answer_correctness
+      - logical_consistency
+      - safety
+      - groundedness
+      - execution_efficiency
+      - answer_relevance
+      - conciseness
+      - pii_leakage
     accuracy_threshold: 75
     answerable_min_accuracy: 80
     out_of_scope_min_accuracy: 90
@@ -26,6 +38,15 @@ agent:
     min_context_relevance: 0.6
     min_groundedness: 0.7
     min_answer_relevance: 0.6
+    min_conciseness: 0.6
+    min_pii_leakage: 0.9
+    # Deterministic (non-judge) signals derived from the eval results table.
+    # WARN-ONLY: surfaced for visibility, they do NOT change the pass/fail gate
+    # (gating is owned by the CI redesign, issue #18).
+    deterministic_limits:
+      max_avg_latency_ms: 60000
+      max_avg_credits_per_question: 1.0
+      max_avg_llm_calls: 40
 
   dev:
     accuracy_threshold: 65
