@@ -177,9 +177,9 @@ python evaluation/evaluate_semantic_view.py \
   --output sv_eval.json
 
 # Agent native GPA evaluation (requires Snowflake connection)
+# Metric set defaults to thresholds.yaml agent.<env>.metrics; override with --metrics.
 python evaluation/audit_agent.py \
   --environment dev \
-  --metrics answer_correctness,logical_consistency,safety,groundedness,execution_efficiency \
   --output agent_eval.json
 ```
 
@@ -307,9 +307,16 @@ Uses Snowflake's `EXECUTE_AI_EVALUATION` with the GPA (Goal-Plan-Action) framewo
 |--------|------|---------------|-------------|
 | `answer_correctness` | Built-in | Goal-Action | Semantic match against ground truth |
 | `logical_consistency` | Built-in | GPA | Internal reasoning coherence (reference-free) |
-| `safety` | Custom LLM-judged | — | Scope compliance, PII protection, prompt injection resistance |
+| `safety` | Custom LLM-judged | — | Scope/boundary compliance, prompt-injection resistance |
 | `groundedness` | Custom LLM-judged | Goal-Action | Claims supported by tool outputs and retrieved data |
 | `execution_efficiency` | Custom LLM-judged | Plan-Action | Optimal tool selection and execution path |
+| `answer_relevance` | Custom LLM-judged | Goal-Action | Response addresses and completely covers the question (distinct from correctness) |
+| `conciseness` | Custom LLM-judged | — | Answer delivered without unnecessary verbosity or padding |
+| `pii_leakage` | Custom LLM-judged | — | No individual-level PII exposed (split out of `safety` for a clearer signal) |
+
+The judge-metric set is configurable per environment in `thresholds.yaml` (`agent.<env>.metrics`); each metric is one LLM-judge call per question, so the set is a cost lever (see [cost model](docs/reference/cost-model.md)).
+
+In addition, the framework derives **deterministic signals** (average latency, tokens, LLM-call count as a step proxy, and estimated credits/question) from the evaluation results table with no extra judge calls. These are reported and checked against optional `deterministic_limits` as warnings; they do not change the pass/fail gate.
 
 Results are viewable in Snowsight's AI Observability dashboard.
 LLM judges are auto-selected by Snowflake.

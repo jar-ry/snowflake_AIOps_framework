@@ -55,11 +55,13 @@ Credits are computed from the model's input, cache-read, and output rates (credi
 
 ### Per-question credit estimate
 
-Using the measured agent profile above with `claude-opus-4-7` and the default five metrics (`answer_correctness`, `logical_consistency`, `safety`, `groundedness`, `execution_efficiency`):
+Using the measured agent profile above with `claude-opus-4-7` and the default eight metrics (`answer_correctness`, `logical_consistency`, `safety`, `groundedness`, `execution_efficiency`, `answer_relevance`, `conciseness`, `pii_leakage`):
 
 - Agent (cache-aware, measured): **~0.22 credits** per question (mean; median ~0.11 -- the distribution is right-skewed by occasional long multi-step questions). Use the mean for budgeting totals.
-- Judges (5, estimated): `5 x (1200/1e6 x 3.25 + 300/1e6 x 16.26)` = approximately `0.044` credits
-- **Per question: approximately `0.26` credits**
+- Judges (8, estimated): `8 x (1200/1e6 x 3.25 + 300/1e6 x 16.26)` = approximately `0.070` credits
+- **Per question: approximately `0.29` credits**
+
+> Metric count is a direct cost lever: each judge metric is one extra `AI_COMPLETE` call per question, so judge cost scales linearly with the metric set. The set is configurable per environment in `thresholds.yaml` (`agent.<env>.metrics`) -- drop metrics you do not need to cut judge cost by `1/M` each. Cost/latency/step-count are derived deterministically from the eval results table (no judge call), so they add no judge cost.
 
 > This is ~2.7x higher than the previous guessed figure (`0.096`), which assumed only ~6,000 agent input tokens. Calibration moved the estimate up on the agent side (far more tokens than assumed) even though cache-aware billing moved the *per-token* cost down. Your agent's token counts depend on your semantic model size, tools, and step count -- measure your own.
 
@@ -79,38 +81,38 @@ cost_credits = total_eval_runs
              x per_question_credits
 ```
 
-`per_question_credits` is approximately `0.26` for the default model and five metrics (see above). `num_agents_changed` is usually 1 (a PR typically changes one agent); multi-agent PRs multiply accordingly. `E` depends on how many environments your pipeline promotes through — a minimal setup has 2 (DEV + PROD), while enterprise setups may have 3 or more (DEV + STAGING + PROD).
+`per_question_credits` is approximately `0.29` for the default model and eight metrics (see above). `num_agents_changed` is usually 1 (a PR typically changes one agent); multi-agent PRs multiply accordingly. `E` depends on how many environments your pipeline promotes through — a minimal setup has 2 (DEV + PROD), while enterprise setups may have 3 or more (DEV + STAGING + PROD).
 
 ## Worked examples
 
-All figures are estimates in AI Credits, assuming `claude-opus-4-7`, five metrics, `per_question_credits` approximately `0.26` (cache-aware; agent measured + judge estimate), one agent changed per PR, and `E = 2` environments (DEV + PROD). Scale `E` for your pipeline. These are derived from the bundled retail example's measured agent profile; your own token counts will differ.
+All figures are estimates in AI Credits, assuming `claude-opus-4-7`, eight metrics, `per_question_credits` approximately `0.29` (cache-aware; agent measured + judge estimate), one agent changed per PR, and `E = 2` environments (DEV + PROD). Scale `E` for your pipeline. These are derived from the bundled retail example's measured agent profile; your own token counts will differ.
 
 ### Small team
 
 - 1 agent, 20-question bank, ~3 commits per PR, 5 PRs per week
-- Per run: `20 x 0.26` = approximately `5.2` credits
-- Per PR: `(3 + E) runs x 5.2` = `(3 + 2) x 5.2` = approximately `26` credits
-- **Per week: `5 x 26` = approximately 130 credits**
+- Per run: `20 x 0.29` = approximately `5.8` credits
+- Per PR: `(3 + E) runs x 5.8` = `(3 + 2) x 5.8` = approximately `29` credits
+- **Per week: `5 x 29` = approximately 145 credits**
 
 ### Medium team
 
 - 5 agents (1 changed per PR), 35-question bank, ~4 commits per PR, 50 PRs per week
-- Per run: `35 x 0.26` = approximately `9.1` credits
-- Per PR: `(4 + E) runs x 9.1` = `(4 + 2) x 9.1` = approximately `55` credits
-- **Per week: `50 x 55` = approximately 2,730 credits**
+- Per run: `35 x 0.29` = approximately `10.2` credits
+- Per PR: `(4 + E) runs x 10.2` = `(4 + 2) x 10.2` = approximately `61` credits
+- **Per week: `50 x 61` = approximately 3,050 credits**
 
 ### Large team
 
 - 20 agents (1 changed per PR), 50-question bank, ~5 commits per PR, 200 PRs per week
-- Per run: `50 x 0.26` = approximately `13` credits
-- Per PR: `(5 + E) runs x 13` = `(5 + 2) x 13` = approximately `91` credits
-- **Per week: `200 x 91` = approximately 18,200 credits**
+- Per run: `50 x 0.29` = approximately `14.5` credits
+- Per PR: `(5 + E) runs x 14.5` = `(5 + 2) x 14.5` = approximately `102` credits
+- **Per week: `200 x 102` = approximately 20,400 credits**
 
 ## Levers to reduce cost
 
 - **Pre-flight smoke check.** Run a 3-question smoke set before the full bank. A broken agent aborts at roughly `0.3` credits instead of running the full bank. This is the single biggest saver on iterative feature branches.
 - **Tiered question banks.** Run a small subset on feature-branch commits (advisory) and the full bank only on merge to main. Cuts feature-branch cost by the ratio of the subsets.
-- **Metric pruning.** Each metric is a judge call per question. Dropping a metric you do not need (for example `groundedness`) removes one judge call per question, reducing judge cost by roughly `1/M`.
+- **Metric pruning.** Each judge metric is a judge call per question. The metric set is configurable per environment (`thresholds.yaml` `agent.<env>.metrics`); dropping a metric you do not need (for example `groundedness`) removes one judge call per question, reducing judge cost by roughly `1/M`. Cost, latency, and step-count are derived from the eval results table deterministically, so prefer those over a judge metric when the signal is numeric.
 - **Cheaper judge model.** The judge model is configurable. A less expensive model (for example a Haiku-class model) lowers judge cost substantially, at some loss of judging nuance.
 
 ## Architecture note: why per-record, not batched
