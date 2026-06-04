@@ -96,3 +96,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA {{DB_EVAL}}.RESULTS TO ROLE {{ROLE_REVIEWER
 GRANT SELECT ON FUTURE TABLES IN SCHEMA {{DB_DEV}}.ANALYTICS TO ROLE {{ROLE_ANALYST}};
 GRANT SELECT ON FUTURE TABLES IN SCHEMA {{DB_PROD}}.ANALYTICS TO ROLE {{ROLE_ANALYST}};
 GRANT SELECT ON FUTURE TABLES IN SCHEMA {{DB_EVAL}}.RESULTS TO ROLE {{ROLE_ANALYST}};
+
+-- Deployer (CI) must be able to SELECT domain tables created AFTER this script
+-- runs (the example's data scripts create them later). Without these FUTURE
+-- grants, the SV question-bank eval -- which executes Cortex Analyst's generated
+-- SQL as the deployer role -- cannot read the tables and silently scores 0%.
+GRANT SELECT ON FUTURE TABLES IN SCHEMA {{DB_DEV}}.ANALYTICS TO ROLE {{ROLE_DEPLOYER}};
+GRANT SELECT ON FUTURE TABLES IN SCHEMA {{DB_PROD}}.ANALYTICS TO ROLE {{ROLE_DEPLOYER}};

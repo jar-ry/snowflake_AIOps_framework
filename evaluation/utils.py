@@ -206,39 +206,6 @@ def execute_sql(conn: snowflake.connector.SnowflakeConnection, sql: str) -> list
         return [{"error": str(e)}]
 
 
-def call_cortex_analyst(conn: snowflake.connector.SnowflakeConnection, semantic_view: str, question: str) -> dict:
-    config = load_config()
-    env_key = None
-    for env, ecfg in config.get("environments", {}).items():
-        if ecfg.get("semantic_view") == semantic_view:
-            env_key = env
-            break
-    agent_name = config["environments"].get(env_key or "dev", {}).get("agent_name")
-    if agent_name:
-        agent_resp = call_cortex_agent(conn, agent_name, question)
-        content = agent_resp.get("content", [])
-        sql_stmt = ""
-        text_resp = ""
-        for item in content:
-            if item.get("type") == "tool_result":
-                tool_content = item.get("tool_result", {}).get("content", [])
-                for tc in tool_content:
-                    if isinstance(tc, dict) and tc.get("type") == "json":
-                        sql_stmt = tc.get("json", {}).get("sql", "")
-                        text_resp = tc.get("json", {}).get("text", "")
-            elif item.get("type") == "text":
-                text_resp = text_resp or item.get("text", "")
-        return {
-            "choices": [{
-                "messages": [
-                    {"type": "sql", "statement": sql_stmt},
-                    {"type": "text", "text": text_resp},
-                ]
-            }]
-        }
-    return {}
-
-
 def call_cortex_agent(
     conn: snowflake.connector.SnowflakeConnection,
     agent_name: str,
@@ -360,17 +327,21 @@ def log_eval_run(
     table: str,
     run_data: dict
 ):
-    columns = ", ".join(run_data.keys())
-    values = ", ".join([
-        f"'{v}'" if isinstance(v, str) else
-        f"PARSE_JSON('{json.dumps(v)}')" if isinstance(v, (dict, list)) else
-        str(v)
-        for v in run_data.values()
-    ])
+    cols = list(run_data.keys())
+    placeholders = []
+    binds = []
+    for col in cols:
+        v = run_data[col]
+        if isinstance(v, (dict, list)):
+            placeholders.append("PARSE_JSON(%s)")   # VARIANT columns
+            binds.append(json.dumps(v, default=str))
+        else:
+            placeholders.append("%s")
+            binds.append(v)
     ev = load_config()["eval"]
     fqn = f"{ev['database']}.{ev['schema']}.{table}"
-    sql = f"INSERT INTO {fqn} ({columns}) SELECT {values}"
-    conn.cursor().execute(sql)
+    sql = f"INSERT INTO {fqn} ({', '.join(cols)}) SELECT {', '.join(placeholders)}"
+    conn.cursor().execute(sql, tuple(binds))
 
 
 def format_results_table(results: list) -> str:

@@ -23,6 +23,21 @@ from llm_judge import judge_sql_result, judge_ambiguous_result
 
 
 def extract_sql_from_analyst_response(response: dict) -> str:
+    """Extract the generated SQL from a Cortex Analyst response.
+
+    The active call_cortex_analyst (REST /api/v2/cortex/analyst/message) returns
+    {"content": [{"type": "text", ...}, {"type": "sql", "statement": "..."}]}.
+    A legacy/agent shape {"choices": [{"messages": [{"type": "sql", ...}]}]} is
+    also supported as a fallback. Returns "" when no SQL is present (e.g. an
+    ambiguous question that yields only "suggestions", or an error response).
+    """
+    if not isinstance(response, dict):
+        return ""
+    # Primary: REST Cortex Analyst content blocks.
+    for item in response.get("content", []) or []:
+        if isinstance(item, dict) and item.get("type") == "sql":
+            return item.get("statement", "") or ""
+    # Fallback: legacy choices/messages shape.
     try:
         choices = response.get("choices", [])
         if choices:
@@ -30,11 +45,18 @@ def extract_sql_from_analyst_response(response: dict) -> str:
             if isinstance(messages, list):
                 for msg in messages:
                     if isinstance(msg, dict) and msg.get("type") == "sql":
-                        return msg.get("statement", "")
+                        return msg.get("statement", "") or ""
             elif isinstance(messages, str):
                 return messages
     except Exception:
         pass
+    return ""
+
+
+def _execution_error(rows) -> str:
+    """If execute_sql returned a swallowed error sentinel, return its message; else ''."""
+    if isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], dict) and "error" in rows[0]:
+        return str(rows[0]["error"])
     return ""
 
 
@@ -47,6 +69,16 @@ def evaluate_question(conn, semantic_view: str, question: dict, env_database: st
     }
 
     analyst_response = call_cortex_analyst(conn, semantic_view, question["question"])
+
+    # Surface analyst-side errors explicitly rather than treating them as "no SQL".
+    if isinstance(analyst_response, dict) and analyst_response.get("error"):
+        result["generated_sql"] = ""
+        result["latency_ms"] = int((time.time() - start_time) * 1000)
+        result["match_status"] = "ANALYST_ERROR"
+        result["llm_judge_score"] = 0.0
+        result["llm_judge_reasoning"] = f"Cortex Analyst error: {analyst_response['error']}"
+        return result
+
     generated_sql = extract_sql_from_analyst_response(analyst_response)
     result["generated_sql"] = generated_sql
     result["latency_ms"] = int((time.time() - start_time) * 1000)
@@ -54,12 +86,18 @@ def evaluate_question(conn, semantic_view: str, question: dict, env_database: st
     if not generated_sql:
         result["match_status"] = "NO_SQL_GENERATED"
         result["llm_judge_score"] = 0.0
-        result["llm_judge_reasoning"] = "Cortex Analyst did not generate SQL"
+        result["llm_judge_reasoning"] = "Cortex Analyst did not generate SQL (ambiguous question or no answer)"
         return result
 
     if question.get("category") == "ambiguous":
         generated_result = execute_sql(conn, generated_sql)
         result["generated_result"] = generated_result
+        gen_err = _execution_error(generated_result)
+        if gen_err:
+            result["match_status"] = "EXECUTION_ERROR"
+            result["llm_judge_score"] = 0.0
+            result["llm_judge_reasoning"] = f"Generated SQL failed to execute: {gen_err}"
+            return result
         judge_result = judge_ambiguous_result(
             conn,
             question["question"],
@@ -77,6 +115,15 @@ def evaluate_question(conn, semantic_view: str, question: dict, env_database: st
         result["expected_sql"] = expected_sql
         result["expected_result"] = expected_result
         result["generated_result"] = generated_result
+
+        gen_err = _execution_error(generated_result)
+        if gen_err:
+            # The generated SQL could not run (e.g. permission denied, syntax) -- this is
+            # an execution failure, not a "wrong answer". Surface it so it is diagnosable.
+            result["match_status"] = "EXECUTION_ERROR"
+            result["llm_judge_score"] = 0.0
+            result["llm_judge_reasoning"] = f"Generated SQL failed to execute: {gen_err}"
+            return result
 
         judge_result = judge_sql_result(
             conn, question["question"], expected_sql, generated_sql,
@@ -177,8 +224,8 @@ def run_evaluation(
             log_eval_run(conn, "SEMANTIC_VIEW_EVAL_DETAILS", {
                 "eval_run_id": summary.get("eval_run_id", ""),
                 **{k: v for k, v in r.items() if k not in ("expected_result", "generated_result")},
-                "expected_result": json.dumps(r.get("expected_result", []), default=str),
-                "generated_result": json.dumps(r.get("generated_result", []), default=str),
+                "expected_result": r.get("expected_result", []),
+                "generated_result": r.get("generated_result", []),
             })
     except Exception as e:
         print(f"Warning: Could not log results to Snowflake: {e}")
