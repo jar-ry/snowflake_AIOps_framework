@@ -195,6 +195,19 @@ def load_question_bank(bank_type: str, difficulty: str) -> list:
     return data.get("questions", [])
 
 
+def current_role(conn: snowflake.connector.SnowflakeConnection) -> str:
+    """Return the session's current role.
+
+    Used by account discovery (discover_account.py) to label how complete the
+    discovered inventory is, since SHOW ... IN ACCOUNT only returns objects the
+    running role can see. Falls back to 'UNKNOWN' on any error.
+    """
+    rows = execute_sql(conn, "SELECT CURRENT_ROLE() AS ROLE")
+    if rows and "error" not in rows[0]:
+        return rows[0].get("ROLE") or rows[0].get("role") or "UNKNOWN"
+    return "UNKNOWN"
+
+
 def execute_sql(conn: snowflake.connector.SnowflakeConnection, sql: str) -> list:
     try:
         cursor = conn.cursor()
