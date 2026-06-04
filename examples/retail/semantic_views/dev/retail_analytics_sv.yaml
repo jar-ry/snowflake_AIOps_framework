@@ -1,6 +1,6 @@
 # PR-A: framework reads object names from config/environments.yaml (genericize-in-place).
 name: RETAIL_ANALYTICS_SV
-description: Retail analytics semantic view for e-commerce data analysis with customer, product, order and store tables
+description: Retail analytics semanti view for e-commerce data analysis with customer, product, order and store tables
 
 tables:
   - name: CUSTOMERS
