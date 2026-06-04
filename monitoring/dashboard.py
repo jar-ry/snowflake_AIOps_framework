@@ -216,34 +216,20 @@ with tab_evals:
 with tab_quality:
     st.header("Interaction quality engine")
 
+    # Reads the aggregated INTERACTION_QUALITY_DAILY base table (daily flag counts
+    # produced by the rules engine). Daily-bucketed regardless of granularity.
     quality_live = run_query(f"""
-        WITH request_flags AS (
-            SELECT
-                {trunc_expr} AS time_bucket,
-                database_name AS environment,
-                agent_name,
-                trace_id,
-                MAX(CASE WHEN step_number > 5 THEN 1 ELSE 0 END) AS is_excessive_steps,
-                MAX(CASE WHEN total_tokens > 50000 THEN 1 ELSE 0 END) AS is_high_token_burn,
-                MAX(CASE WHEN planning_duration_ms > 30000 THEN 1 ELSE 0 END) AS is_slow_request,
-                MAX(CASE WHEN planning_status != 'success' AND planning_status IS NOT NULL THEN 1 ELSE 0 END) AS is_planning_error
-            FROM {OBS}.AGENT_TRACES
-            WHERE {time_filter} {env_clause}
-              AND span_name LIKE 'ReasoningAgentStep%'
-              AND agent_name IS NOT NULL
-            GROUP BY 1, 2, 3, 4
-        )
         SELECT
-            time_bucket,
-            COUNT(DISTINCT trace_id) AS total_requests,
-            SUM(is_excessive_steps) AS excessive_steps_count,
-            SUM(is_high_token_burn) AS high_token_burn_count,
-            SUM(is_slow_request) AS slow_request_count,
-            SUM(is_planning_error) AS planning_error_count,
-            SUM(GREATEST(is_excessive_steps, is_high_token_burn, is_slow_request, is_planning_error)) AS flagged_count
-        FROM request_flags
-        GROUP BY 1
-        ORDER BY 1
+            summary_date AS time_bucket,
+            total_requests,
+            excessive_steps_count,
+            high_token_burn_count,
+            slow_request_count,
+            planning_error_count,
+            flagged_requests AS flagged_count
+        FROM {MON}.INTERACTION_QUALITY_DAILY
+        WHERE summary_date >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
+        ORDER BY summary_date
     """)
 
     if not quality_live.empty:
@@ -365,30 +351,24 @@ with tab_costs:
         "metering (see monitoring/cost_reconcile.py)."
     )
 
+    # Reads the aggregated USAGE_METRICS base table (cache-aware estimated_credits
+    # is precomputed at write time). USAGE_METRICS is daily, so this tab is always
+    # day-bucketed regardless of the granularity selector.
     costs = run_query(f"""
-        SELECT {trunc_expr} AS time_bucket,
-               COALESCE(database_name, 'UNKNOWN') AS environment,
-               CASE WHEN span_name LIKE 'ReasoningAgentStep%' THEN 'cortex_agent'
-                    WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst'
-                    ELSE 'other' END AS service_type,
-               COALESCE(agent_name, 'unknown') AS agent_name,
-               COUNT(DISTINCT trace_id) AS total_requests,
-               COALESCE(SUM(input_tokens),0) AS total_input_tokens,
-               COALESCE(SUM(output_tokens),0) AS total_output_tokens,
-               COALESCE(SUM(total_tokens),0) AS total_tokens,
-               COALESCE(SUM(cache_read_tokens),0) AS total_cache_read_tokens,
-               -- Cache-aware estimate: cache-read input billed at the cheaper cache rate (see config/defaults.yaml).
-               SUM(CASE WHEN model_used = 'claude-opus-4-7'
-                        THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*3.25
-                             + COALESCE(cache_read_tokens,0)/1000000.0*0.33
-                             + COALESCE(output_tokens,0)/1000000.0*16.26
-                        ELSE COALESCE(input_tokens,0)/1000000.0*1.0 + COALESCE(output_tokens,0)/1000000.0*1.0 END) AS estimated_credits,
-               AVG(planning_duration_ms) AS avg_latency_ms
-        FROM {OBS}.AGENT_TRACES
-        WHERE {time_filter} {env_clause}
-          AND span_name LIKE 'ReasoningAgentStep%'
-        GROUP BY 1,2,3,4
-        ORDER BY 1 DESC
+        SELECT metric_date AS time_bucket,
+               environment,
+               service_type,
+               agent_or_sv_name AS agent_name,
+               total_requests,
+               total_input_tokens,
+               total_output_tokens,
+               total_tokens,
+               total_cache_read_tokens,
+               estimated_credits,
+               avg_latency_ms
+        FROM {MON}.USAGE_METRICS
+        WHERE metric_date >= DATEADD('day', -{days_back}, CURRENT_DATE()) {env_clause}
+        ORDER BY metric_date DESC
     """)
 
     if not costs.empty:

@@ -82,6 +82,8 @@ LIMIT 10;
 
 **Navigation:** Projects > Streamlit > AI_MONITORING_DASHBOARD
 
+**SETUP (do this first, before talking):** In the left sidebar set **Time window = "Last 30 days"** (default is 24h and will look empty) and **Environment = "All"** (or "RETAIL_AI_DEV"). The demo data is a 28-day story with an incident around **May 25-29**; all tabs share those same dates.
+
 **Tab-by-tab walkthrough:**
 
 ### Tab 1: Overview
@@ -90,30 +92,28 @@ LIMIT 10;
 - "Executives get this. One glance: better or worse?"
 
 ### Tab 2: Evaluations
-- Accuracy trend: 71.4% -> 87.6% (16pp improvement between commits)
-- Red threshold line at 60% (DEV gate)
-- "Each commit is evaluated. CI blocks merge if below threshold."
+- Accuracy trend: steady ~90%, **drops to ~69% during the May 25-29 incident (falls below the 85% gate), then recovers to ~92%**
+- Red threshold line at 85% (DEV gate) — points below it are failing runs
+- "Each commit is evaluated. CI blocks merge if below threshold. You can SEE the regression week and the recovery."
 
 ### Tab 3: Interaction Quality
-- Flagged request % (tool looping, excessive steps, slow requests)
-- Thread signals (abandoned conversations, rapid rephrasing)
+- Flagged request % (tool looping, excessive steps, slow requests) — **spikes from ~4% to ~37% during the incident** (planning errors + high token burn), then settles back
 - "Zero LLM cost. Pure SQL rules over native observability events."
 
 ### Tab 4: Feedback
-- Sentiment stacked bar chart (positive/neutral/negative)
+- Sentiment stacked bar chart (positive/neutral/negative) — **negative cluster during the incident week (neg% ~7% -> ~54%), rating dips to ~2.3**, then recovers
 - 7-day rolling average rating
 - "Users close the loop. Sentiment spikes trigger alerts."
 
 ### Tab 5: Token Costs
-- Daily cost by service type
-- Token usage area chart
-- Latency avg vs P95
-- "Cost governance. Alert fires if cost > 2x 7-day average."
+- Daily cost by service type — baseline ~0.13 credits/request, **spikes ~2.5x (to ~0.34) during the incident** from retry/looping token burn, then normalizes
+- Token usage area chart; latency avg vs P95 (also spikes to ~9s in the incident)
+- "Cache-aware credit estimates. Alert fires if cost > 2x 7-day average."
 
 ### Tab 6: Alerts
-- 3 active unacknowledged alerts
+- **1 active (unacknowledged) WARNING** now; the incident's 3 CRITICALs (accuracy_below_threshold, high_flagged_rate, cost_spike) show in history **already acknowledged** (the loop was closed)
 - Full alert history with acknowledge workflow
-- "7 alert types fire automatically. These would trigger Slack/email in prod."
+- "Alerts fire automatically. These would trigger Slack/email in prod. Notice the incident criticals were caught and resolved."
 
 ---
 
