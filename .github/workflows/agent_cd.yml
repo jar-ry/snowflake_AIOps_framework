@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'examples/retail/agents/**'
+      - 'examples/*/agents/**'
 
 jobs:
   promote-agent-to-prod:
     runs-on: ubuntu-latest
     env:
-      AIOPS_INSTANCE: examples/retail
+      DEFAULT_INSTANCE: examples/retail
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
@@ -19,6 +19,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve active instance from changed files
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then BEFORE="HEAD~1"; fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}")
+          echo "Changed files:"; echo "$CHANGED"
+          INSTANCES=$(echo "$CHANGED" | grep -oE '^examples/[^/]+/agents/' | sed -E 's#/agents/.*##' | sort -u)
+          COUNT=$(printf '%s\n' "$INSTANCES" | grep -c . || true)
+          if [ "$COUNT" -eq 0 ]; then
+            INSTANCE="${DEFAULT_INSTANCE}"
+            echo "No example agent change detected; using DEFAULT_INSTANCE=$INSTANCE"
+          else
+            if [ "$COUNT" -gt 1 ]; then echo "WARNING: multiple instances changed; using the first:"; echo "$INSTANCES"; fi
+            INSTANCE=$(printf '%s\n' "$INSTANCES" | head -1)
+          fi
+          echo "AIOPS_INSTANCE=$INSTANCE" >> "$GITHUB_ENV"
+          echo "Resolved AIOPS_INSTANCE=$INSTANCE"
 
       - name: Set up Python
         uses: actions/setup-python@v5
