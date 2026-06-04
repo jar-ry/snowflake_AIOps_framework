@@ -9,6 +9,8 @@ and this project aims to adhere to [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
+- Apache License 2.0 (`LICENSE`) and attribution `NOTICE`, making the framework's
+  open-source status explicit (#32).
 - Framework / instance split: the domain-agnostic engine lives at the repo root and
   the retail reference instance moves to `examples/retail/`, with a
   `config/defaults.yaml` + per-instance config merge resolved via `AIOPS_INSTANCE`

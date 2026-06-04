@@ -135,7 +135,7 @@ What's next:
 - Auto-remediation: CI opens fix PRs
 - Multi-agent governance: chain-of-agents support
 
-This is open source. Bring your own semantic view, your own question bank. The framework is domain-agnostic."
+This is open source (Apache-2.0). Bring your own semantic view, your own question bank. The framework is domain-agnostic."
 
 ---
 

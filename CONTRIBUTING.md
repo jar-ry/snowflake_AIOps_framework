@@ -92,8 +92,7 @@ framework code (`evaluation/**`) runs against the default instance. Docs-only PR
 
 ## License
 
-> **TODO:** A `LICENSE` file has not yet been added — the license choice is a
-> pending stakeholder decision (tracked in #32). Until a license is committed,
-> treat this repository as **all rights reserved** and do not redistribute.
-> Contributions are accepted on the understanding that they will be covered by
-> whatever license is ultimately adopted.
+This project is licensed under the **Apache License 2.0** — see [LICENSE](LICENSE)
+and [NOTICE](NOTICE). By submitting a Contribution, you agree that it is provided
+under the terms of that license (per Section 5 of the Apache License 2.0); no
+separate CLA is required.
