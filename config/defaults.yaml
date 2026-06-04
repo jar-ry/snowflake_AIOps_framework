@@ -14,9 +14,24 @@ llm:
   judge_model: claude-opus-4-7
   analyst_model: default
 
+# Token-count assumptions for PRE-FLIGHT cost estimation (see docs/reference/cost-model.md).
+# AGENT values are MEASURED medians from real eval runs (see `sample`); JUDGE values are
+# estimates (judge tokens are not exposed in observability and cannot be measured today).
+# Token counts depend heavily on your semantic model size, tools, and step count, so treat
+# these as the bundled retail example's profile and prefer your own measured actuals.
+token_assumptions:
+  sample: "n=3345 agent questions, OBSERVABILITY.AGENT_TRACES, 2026-04-29..2026-06-04"
+  agent_input_tokens: 195000          # measured median total input per question (incl. cache reads)
+  agent_cache_read_tokens: 116000     # measured median; ~85% of input is served from prompt cache
+  agent_output_tokens: 410            # measured median output per question
+  judge_input_tokens: 1200            # ESTIMATE (unmeasured), per metric per question
+  judge_output_tokens: 300            # ESTIMATE (unmeasured), per metric per question
+
 # Snowflake credit rates per model (platform pricing — same for all instances).
-# Used by the cost-estimation expressions in monitoring tasks + dashboard.
+# Used by the cache-aware cost-estimation expressions in monitoring tasks + dashboard.
+# ESTIMATES ONLY: confirm against your Snowflake Service Consumption Table; rates drift.
 pricing:
+  last_verified: 2026-06-04
   default_input_credits_per_million: 1.0
   default_output_credits_per_million: 1.0
   models:
