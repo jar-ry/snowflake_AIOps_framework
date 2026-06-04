@@ -144,7 +144,7 @@ This is open source. Bring your own semantic view, your own question bank. The f
 | Question | Answer |
 |----------|--------|
 | "Is this just a wrapper around EXECUTE_AI_EVALUATION?" | Pillar 2 uses it, yes. Pillar 1 (structural audit) and Pillar 3 (interaction quality) are entirely custom — no Snowflake-native equivalent. |
-| "What does this cost?" | Structural audit: free. Rules engine: free. Eval runs: ~$5 per 35-question batch. Warehouse: XSMALL at $1/credit. |
+| "What does this cost?" | Structural audit: free. Rules engine: free. Eval runs: ~9 AI Credits per 35-question batch (~0.26 credits/question, cache-aware, 5 metrics). Loop 2 runtime monitoring: no LLM tokens — just short daily XSMALL tasks. Dollar cost depends on your contract's credit price; see `docs/reference/cost-model.md`. |
 | "How long to set up for my data?" | bootstrap.py does everything in 5 minutes. You bring your SV YAML + question bank. Framework is domain-agnostic. |
 | "The 40% SV accuracy — doesn't that mean it doesn't work?" | That's SQL-path-matching, not answer accuracy. The agent gives correct answers 94.3% of the time via different (equally valid) SQL paths. |
 | "Can I customize the audit rules?" | Yes — they're Python functions in audit_semantic_view.py. Add any rule, set any severity. |
