@@ -136,4 +136,4 @@ The gap: Everyone monitors agent **output** after the fact. Nobody governs the *
 - Data teams (5-20 people) self-serving semantic view development
 - Industries: retail, financial services, healthcare, logistics (domain-agnostic framework)
 - Pain: "We deployed an agent but have no idea if it's getting worse over time"
-- Budget: $0 (framework is open-source) + Snowflake compute costs only
+- Budget: $0 (framework is open-source, Apache-2.0) + Snowflake compute costs only

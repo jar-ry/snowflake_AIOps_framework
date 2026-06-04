@@ -742,3 +742,14 @@ Edit `examples/retail/config/monitoring.yaml` to adjust alert thresholds, schedu
 | `SNOWFLAKE_USER` | Service account username |
 | `SNOWFLAKE_PASSWORD` | Service account password |
 | `SNOWFLAKE_CONNECTION_NAME` | Named connection (optional) |
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch → PR → merge workflow, commit
+conventions, CI gates, and local setup. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE) (see also [NOTICE](NOTICE)).
