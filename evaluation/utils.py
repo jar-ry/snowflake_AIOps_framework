@@ -208,6 +208,40 @@ def current_role(conn: snowflake.connector.SnowflakeConnection) -> str:
     return "UNKNOWN"
 
 
+def build_credits_expr(
+    pricing: dict,
+    input_col: str = "input_tokens",
+    output_col: str = "output_tokens",
+    cache_col: str = "cache_read_tokens",
+) -> str:
+    """Cache-aware per-model credit CASE expression built from the pricing config.
+
+    Charges non-cache input at the input rate, cache-read input at the (much
+    cheaper) cache_read rate, and output at the output rate. Falls back to the
+    input rate for cache reads when a model has no cache_read rate. GREATEST
+    guards against cache_read exceeding input. This is the single source of the
+    credit formula for the Python-built monitoring SQL (bootstrap + example seed).
+    """
+    default_in = pricing.get("default_input_credits_per_million", 1.0)
+    default_out = pricing.get("default_output_credits_per_million", 1.0)
+
+    def term(in_r, out_r, cache_r):
+        return (
+            f"GREATEST(COALESCE({input_col},0)-COALESCE({cache_col},0),0)/1000000.0*{in_r} "
+            f"+ COALESCE({cache_col},0)/1000000.0*{cache_r} "
+            f"+ COALESCE({output_col},0)/1000000.0*{out_r}"
+        )
+
+    parts = []
+    for model, rates in pricing.get("models", {}).items():
+        in_r = rates["input_credits_per_million"]
+        out_r = rates["output_credits_per_million"]
+        cache_r = rates.get("cache_read_credits_per_million", in_r)
+        parts.append(f"WHEN model_used = '{model}' THEN {term(in_r, out_r, cache_r)}")
+    parts.append(f"ELSE {term(default_in, default_out, default_in)}")
+    return "CASE " + " ".join(parts) + " END"
+
+
 def execute_sql(conn: snowflake.connector.SnowflakeConnection, sql: str) -> list:
     try:
         cursor = conn.cursor()

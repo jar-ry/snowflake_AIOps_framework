@@ -24,7 +24,7 @@ BEGIN
     INSERT INTO {{DB_EVAL}}.MONITORING.USAGE_METRICS (
         metric_date, environment, service_type, agent_or_sv_name,
         total_requests, successful_requests, failed_requests,
-        total_input_tokens, total_output_tokens, total_tokens,
+        total_input_tokens, total_output_tokens, total_tokens, total_cache_read_tokens,
         estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms,
         unique_users
     )
@@ -43,16 +43,17 @@ BEGIN
         COALESCE(SUM(input_tokens), 0)                                               AS total_input_tokens,
         COALESCE(SUM(output_tokens), 0)                                              AS total_output_tokens,
         COALESCE(SUM(total_tokens), 0)                                               AS total_tokens,
-        SUM(CASE                                                                        -- Per-model pricing (AI Credits per 1M tokens) from config/environments.yaml
-            WHEN model_used = 'claude-opus-4-7' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
-            WHEN model_used = 'claude-opus-4-6' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
-            WHEN model_used = 'claude-opus-4-5' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
-            WHEN model_used = 'claude-4-opus' THEN COALESCE(input_tokens,0)/1000000.0*8.87 + COALESCE(output_tokens,0)/1000000.0*44.34
-            WHEN model_used = 'claude-4-sonnet' THEN COALESCE(input_tokens,0)/1000000.0*1.77 + COALESCE(output_tokens,0)/1000000.0*8.87
-            WHEN model_used = 'claude-3-7-sonnet' THEN COALESCE(input_tokens,0)/1000000.0*1.77 + COALESCE(output_tokens,0)/1000000.0*8.87
-            WHEN model_used = 'claude-sonnet-4-5' THEN COALESCE(input_tokens,0)/1000000.0*1.95 + COALESCE(output_tokens,0)/1000000.0*9.76
-            WHEN model_used = 'claude-sonnet-4-6' THEN COALESCE(input_tokens,0)/1000000.0*1.95 + COALESCE(output_tokens,0)/1000000.0*9.76
-            WHEN model_used = 'claude-haiku-4-5' THEN COALESCE(input_tokens,0)/1000000.0*0.65 + COALESCE(output_tokens,0)/1000000.0*3.25
+        COALESCE(SUM(cache_read_tokens), 0)                                          AS total_cache_read_tokens,
+        SUM(CASE                                                                        -- Cache-aware per-model pricing (AI Credits per 1M tokens) from config/defaults.yaml; kept in sync with evaluation/utils.build_credits_expr
+            WHEN model_used = 'claude-opus-4-7' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*3.25 + COALESCE(cache_read_tokens,0)/1000000.0*0.33 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-opus-4-6' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*3.25 + COALESCE(cache_read_tokens,0)/1000000.0*0.33 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-opus-4-5' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*3.25 + COALESCE(cache_read_tokens,0)/1000000.0*0.33 + COALESCE(output_tokens,0)/1000000.0*16.26
+            WHEN model_used = 'claude-4-opus' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*8.87 + COALESCE(cache_read_tokens,0)/1000000.0*0.89 + COALESCE(output_tokens,0)/1000000.0*44.34
+            WHEN model_used = 'claude-4-sonnet' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*1.77 + COALESCE(cache_read_tokens,0)/1000000.0*0.18 + COALESCE(output_tokens,0)/1000000.0*8.87
+            WHEN model_used = 'claude-3-7-sonnet' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*1.77 + COALESCE(cache_read_tokens,0)/1000000.0*0.18 + COALESCE(output_tokens,0)/1000000.0*8.87
+            WHEN model_used = 'claude-sonnet-4-5' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*1.95 + COALESCE(cache_read_tokens,0)/1000000.0*0.20 + COALESCE(output_tokens,0)/1000000.0*9.76
+            WHEN model_used = 'claude-sonnet-4-6' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*1.95 + COALESCE(cache_read_tokens,0)/1000000.0*0.20 + COALESCE(output_tokens,0)/1000000.0*9.76
+            WHEN model_used = 'claude-haiku-4-5' THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*0.65 + COALESCE(cache_read_tokens,0)/1000000.0*0.06 + COALESCE(output_tokens,0)/1000000.0*3.25
             ELSE COALESCE(input_tokens,0)/1000000.0*1.0 + COALESCE(output_tokens,0)/1000000.0*1.0
         END)                                                                         AS estimated_credits,
         AVG(planning_duration_ms)                                                    AS avg_latency_ms,

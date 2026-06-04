@@ -414,22 +414,9 @@ def create_tasks_directly(cur, schedule_profile="demo"):
     schedules = load_schedule_config(schedule_profile)
     config = load_env_config()
     pricing = config.get("pricing", {})
-    default_in = pricing.get("default_input_credits_per_million", 1.0)
-    default_out = pricing.get("default_output_credits_per_million", 1.0)
-    models = pricing.get("models", {})
-
-    case_parts = []
-    for model, rates in models.items():
-        in_rate = rates["input_credits_per_million"]
-        out_rate = rates["output_credits_per_million"]
-        case_parts.append(
-            f"WHEN model_used = '{model}' THEN "
-            f"COALESCE(input_tokens,0)/1000000.0*{in_rate} + COALESCE(output_tokens,0)/1000000.0*{out_rate}"
-        )
-    case_parts.append(
-        f"ELSE COALESCE(input_tokens,0)/1000000.0*{default_in} + COALESCE(output_tokens,0)/1000000.0*{default_out}"
-    )
-    credits_expr = "CASE " + " ".join(case_parts) + " END"
+    # Cache-aware credit formula (single source: evaluation/utils.build_credits_expr).
+    from utils import build_credits_expr
+    credits_expr = build_credits_expr(pricing)
 
     # Config-derived names (genericize embedded SQL)
     ev = config["eval"]; envs = config["environments"]
@@ -442,14 +429,14 @@ def create_tasks_directly(cur, schedule_profile="demo"):
             INSERT INTO {db_eval}.{mon}.USAGE_METRICS (
                 metric_date, environment, service_type, agent_or_sv_name,
                 total_requests, successful_requests, failed_requests,
-                total_input_tokens, total_output_tokens, total_tokens,
+                total_input_tokens, total_output_tokens, total_tokens, total_cache_read_tokens,
                 estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
             SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'),
                 CASE WHEN span_name LIKE 'ReasoningAgentStep%' OR span_name LIKE 'CodingAgent%' THEN 'cortex_agent'
                      WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst' ELSE 'other' END,
                 COALESCE(agent_name, 'unknown'),
                 COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
-                COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
+                COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0), COALESCE(SUM(cache_read_tokens),0),
                 SUM({credits_expr}), AVG(planning_duration_ms),
                 APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
                 APPROX_PERCENTILE(planning_duration_ms,0.99), 0

@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS {{DB_EVAL}}.MONITORING.USAGE_METRICS (
     total_input_tokens  BIGINT,
     total_output_tokens BIGINT,
     total_tokens        BIGINT,
+    total_cache_read_tokens BIGINT,        -- portion of input served from prompt cache (cheaper rate)
     estimated_credits   FLOAT,
     avg_latency_ms      FLOAT,
     p50_latency_ms      FLOAT,

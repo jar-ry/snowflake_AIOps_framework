@@ -359,6 +359,11 @@ with tab_feedback:
 
 with tab_costs:
     st.header("Token usage & credits")
+    st.caption(
+        "Credits are cache-aware **estimates** (cache-read input billed at the cheaper cache rate; "
+        "rates from config/defaults.yaml). For ground-truth spend, reconcile against ACCOUNT_USAGE "
+        "metering (see monitoring/cost_reconcile.py)."
+    )
 
     costs = run_query(f"""
         SELECT {trunc_expr} AS time_bucket,
@@ -371,7 +376,12 @@ with tab_costs:
                COALESCE(SUM(input_tokens),0) AS total_input_tokens,
                COALESCE(SUM(output_tokens),0) AS total_output_tokens,
                COALESCE(SUM(total_tokens),0) AS total_tokens,
-               SUM(CASE WHEN model_used = 'claude-opus-4-7' THEN COALESCE(input_tokens,0)/1000000.0*3.25 + COALESCE(output_tokens,0)/1000000.0*16.26
+               COALESCE(SUM(cache_read_tokens),0) AS total_cache_read_tokens,
+               -- Cache-aware estimate: cache-read input billed at the cheaper cache rate (see config/defaults.yaml).
+               SUM(CASE WHEN model_used = 'claude-opus-4-7'
+                        THEN GREATEST(COALESCE(input_tokens,0)-COALESCE(cache_read_tokens,0),0)/1000000.0*3.25
+                             + COALESCE(cache_read_tokens,0)/1000000.0*0.33
+                             + COALESCE(output_tokens,0)/1000000.0*16.26
                         ELSE COALESCE(input_tokens,0)/1000000.0*1.0 + COALESCE(output_tokens,0)/1000000.0*1.0 END) AS estimated_credits,
                AVG(planning_duration_ms) AS avg_latency_ms
         FROM {OBS}.AGENT_TRACES
