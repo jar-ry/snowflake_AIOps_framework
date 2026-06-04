@@ -612,25 +612,25 @@
       <tbody>
         <tr>
           <td><code>semantic_view_ci.yml</code></td>
-          <td>PR to main (semantic_views/**)</td>
+          <td>PR to main (examples/retail/semantic_views/**)</td>
           <td><span class="tag tag-ci">CI</span></td>
           <td>Audit YAML → Deploy to DEV → Evaluate 30 questions → PR comment</td>
         </tr>
         <tr>
           <td><code>semantic_view_cd.yml</code></td>
-          <td>Push to main (semantic_views/**)</td>
+          <td>Push to main (examples/retail/semantic_views/**)</td>
           <td><span class="tag tag-cd">CD</span></td>
           <td>Audit gate → Final eval on DEV → Deploy to PROD</td>
         </tr>
         <tr>
           <td><code>agent_ci.yml</code></td>
-          <td>PR to main (agents/**)</td>
+          <td>PR to main (examples/retail/agents/**)</td>
           <td><span class="tag tag-ci">CI</span></td>
           <td>Deploy agent to DEV → Native GPA eval → PR comment</td>
         </tr>
         <tr>
           <td><code>agent_cd.yml</code></td>
-          <td>Push to main (agents/**)</td>
+          <td>Push to main (examples/retail/agents/**)</td>
           <td><span class="tag tag-cd">CD</span></td>
           <td>Native GPA eval gate → Deploy to PROD</td>
         </tr>
@@ -1128,7 +1128,7 @@
       <thead><tr><th>File</th><th>Purpose</th></tr></thead>
       <tbody>
         <tr><td><code>bootstrap.py</code></td><td><strong>One-command setup</strong> — runs all SQL, deploys DEV SV/agent, runs first eval, deploys SiS dashboard</td></tr>
-        <tr><td><code>deploy_dev.py</code></td><td>Deploy SV + agent to DEV only (used by bootstrap and CI)</td></tr>
+        <tr><td><code>setup/deploy.py</code></td><td>Deploy SV or agent to an environment (config-driven; used by bootstrap and CI)</td></tr>
         <tr><td><code>01_create_databases.sql</code></td><td>DEV/PROD databases, eval results tables, warehouse</td></tr>
         <tr><td><code>02_create_tables.sql</code></td><td>CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES</td></tr>
         <tr><td><code>03_seed_data.sql</code></td><td>500 customers, 100 products, 20 stores, 5,000 orders</td></tr>
@@ -1159,8 +1159,8 @@
     <table>
       <thead><tr><th>Path</th><th>Format</th><th>Deployed Via</th></tr></thead>
       <tbody>
-        <tr><td><code>semantic_views/{dev,prod}/retail_analytics_sv.yaml</code></td><td>YAML</td><td>SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML</td></tr>
-        <tr><td><code>agents/{dev,prod}/retail_agent.sql</code></td><td>YAML spec in SQL</td><td>CREATE AGENT FROM SPECIFICATION $$...$$</td></tr>
+        <tr><td><code>examples/retail/semantic_views/{dev,prod}/retail_analytics_sv.yaml</code></td><td>YAML</td><td>SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML</td></tr>
+        <tr><td><code>examples/retail/agents/{dev,prod}/retail_agent.sql</code></td><td>YAML spec in SQL</td><td>CREATE AGENT FROM SPECIFICATION $$...$$</td></tr>
       </tbody>
     </table>
 
@@ -1168,12 +1168,12 @@
     <table>
       <thead><tr><th>Path</th><th>Questions</th><th>Focus</th></tr></thead>
       <tbody>
-        <tr><td><code>question_banks/semantic_view/easy_questions.yaml</code></td><td>10</td><td>Simple queries with ground truth SQL</td></tr>
-        <tr><td><code>question_banks/semantic_view/hard_questions.yaml</code></td><td>10</td><td>Complex multi-table queries</td></tr>
-        <tr><td><code>question_banks/semantic_view/ambiguous_questions.yaml</code></td><td>10</td><td>Ambiguous questions — LLM-judged</td></tr>
-        <tr><td><code>question_banks/agent/answerable_questions.yaml</code></td><td>15</td><td>Data queries + scope detection</td></tr>
-        <tr><td><code>question_banks/agent/out_of_scope.yaml</code></td><td>10</td><td>Wrong domain, destructive, sensitive</td></tr>
-        <tr><td><code>question_banks/agent/adversarial_questions.yaml</code></td><td>10</td><td>Prompt injection, SQL injection, exfiltration</td></tr>
+        <tr><td><code>examples/retail/question_banks/semantic_view/easy_questions.yaml</code></td><td>10</td><td>Simple queries with ground truth SQL</td></tr>
+        <tr><td><code>examples/retail/question_banks/semantic_view/hard_questions.yaml</code></td><td>10</td><td>Complex multi-table queries</td></tr>
+        <tr><td><code>examples/retail/question_banks/semantic_view/ambiguous_questions.yaml</code></td><td>10</td><td>Ambiguous questions — LLM-judged</td></tr>
+        <tr><td><code>examples/retail/question_banks/agent/answerable_questions.yaml</code></td><td>15</td><td>Data queries + scope detection</td></tr>
+        <tr><td><code>examples/retail/question_banks/agent/out_of_scope.yaml</code></td><td>10</td><td>Wrong domain, destructive, sensitive</td></tr>
+        <tr><td><code>examples/retail/question_banks/agent/adversarial_questions.yaml</code></td><td>10</td><td>Prompt injection, SQL injection, exfiltration</td></tr>
       </tbody>
     </table>
 
@@ -1184,8 +1184,8 @@
         <tr><td><code>config/environments.yaml</code></td><td>Environment-specific Snowflake configuration (databases, warehouses, LLM model)</td></tr>
         <tr><td><code>config/thresholds.yaml</code></td><td>Accuracy thresholds per environment (DEV 60% → PROD 85%)</td></tr>
         <tr><td><code>config/monitoring.yaml</code></td><td>Alert thresholds, schedules, health check params, notification config</td></tr>
-        <tr><td><code>config/agent_evaluation_config.yaml</code></td><td>EXECUTE_AI_EVALUATION YAML spec — GPA metrics + custom metrics</td></tr>
-        <tr><td><code>monitoring/snowflake.yml</code></td><td>SiS deployment manifest for the monitoring dashboard</td></tr>
+        <tr><td><code>config/defaults.yaml</code></td><td>Framework defaults: LLM models + Snowflake credit pricing (merged under instance config)</td></tr>
+        <tr><td><code>monitoring/snowflake.yml.template</code></td><td>SiS deployment descriptor (token-rendered at deploy time) for the monitoring dashboard</td></tr>
       </tbody>
     </table>
 
@@ -1193,9 +1193,9 @@
     <table>
       <thead><tr><th>File</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code>demo/demo_runbook.md</code></td><td>Step-by-step demo script with talking points</td></tr>
-        <tr><td><code>demo/snowsight_walkthrough.md</code></td><td>Snowsight UI walkthrough for agent + observability</td></tr>
-        <tr><td><code>demo/market_positioning.md</code></td><td>Market positioning and differentiation vs alternatives</td></tr>
+        <tr><td><code>examples/retail/demo/demo_runbook.md</code></td><td>Step-by-step demo script with talking points</td></tr>
+        <tr><td><code>examples/retail/demo/snowsight_walkthrough.md</code></td><td>Snowsight UI walkthrough for agent + observability</td></tr>
+        <tr><td><code>examples/retail/demo/market_positioning.md</code></td><td>Market positioning and differentiation vs alternatives</td></tr>
       </tbody>
     </table>
   </div>

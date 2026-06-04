@@ -32,7 +32,7 @@ The mock domain is **retail/e-commerce** with a database of customers, products,
 | Semantic View | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_ANALYTICS_SV` |
 | Agent | `RETAIL_AI_{ENV}.SEMANTIC.RETAIL_AGENT` |
 | Agent LLM | `claude-opus-4-7` |
-| LLM judge model | `claude-opus-4-7` (configurable in `config/environments.yaml` → `llm.judge_model`) |
+| LLM judge model | `claude-opus-4-7` (configurable in `config/defaults.yaml` → `llm.judge_model`) |
 
 ### RBAC Roles
 
@@ -55,48 +55,43 @@ Feature branch → PR (CI: deploy to DEV + evaluate) → Merge to main → CD: p
 
 ```
 ai_evaluation_framework/
-├── setup/                                # Snowflake setup (bootstrap.py runs all)
-│   ├── bootstrap.py                      # One-command full setup
-│   ├── deploy_dev.py                     # Deploy SV + agent to DEV only
-│   ├── 01_create_databases.sql           # DEV/PROD databases, eval results tables
-│   ├── 02_create_tables.sql              # CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES
-│   ├── 03_seed_data.sql                  # 500 customers, 100 products, 20 stores, 5000 orders
+├── setup/                                # FRAMEWORK setup (bootstrap.py runs all, domain-agnostic)
+│   ├── bootstrap.py                      # One-command setup: python setup/bootstrap.py --example examples/retail
+│   ├── deploy.py                         # Config-driven SV/agent deploy (used by CI)
+│   ├── 01_create_databases.sql           # DEV/PROD/EVAL databases, schemas, eval result tables, warehouse
 │   ├── 04_rbac_setup.sql                 # Roles and grants
 │   ├── 05_observability_setup.sql        # Views over snowflake.local.ai_observability_events
-│   ├── 06_eval_dataset_setup.sql         # OBJECT-typed ground truth for EXECUTE_AI_EVALUATION
 │   ├── 07_monitoring_tables.sql          # Feedback, usage, health, alert tables + RBAC
 │   ├── 08_monitoring_tasks.sql           # 5 Snowflake Tasks + 2 stored procedures
 │   ├── 09_monitoring_views.sql           # 7 trend views for Snowsight dashboards
 │   ├── 10_monitoring_alerts.sql          # 7 Snowflake Alerts
-│   └── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
-├── semantic_views/{dev,prod}/          # CREATE SEMANTIC VIEW DDL per environment
-├── agents/{dev,prod}/                  # CREATE CORTEX AGENT DDL per environment
-├── question_banks/
-│   ├── semantic_view/                    # easy, hard, ambiguous YAML question banks
-│   └── agent/                            # answerable, out_of_scope, adversarial YAML
-├── evaluation/
+│   ├── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
+│   └── teardown.sql                      # Token-rendered full purge (via bootstrap --render)
+├── evaluation/                           # FRAMEWORK evaluation engine (config-driven)
 │   ├── audit_semantic_view.py            # Best practices audit (DDL parsing, no SF connection)
 │   ├── audit_agent.py                    # Native EXECUTE_AI_EVALUATION (GPA framework)
 │   ├── evaluate_semantic_view.py         # Batch SV eval with SQL comparison + LLM judge
 │   ├── llm_judge.py                      # LLM-as-a-Judge for SV ambiguous evaluation
-│   └── utils.py                          # Shared: connection, SQL exec, analyst/agent calls
-├── monitoring/
+│   └── utils.py                          # Instance resolver (load_config/instance_dir) + SF helpers
+├── monitoring/                           # FRAMEWORK monitoring
 │   ├── health_check.py                   # 7 DEV/PROD health checks (runnable locally or in CI)
 │   ├── dashboard.py                      # Streamlit in Snowflake (SiS) monitoring dashboard
-│   └── snowflake.yml                     # SiS deployment config
-├── .github/workflows/
+│   └── snowflake.yml.template            # SiS deploy descriptor (token-rendered at deploy time)
+├── .github/workflows/                    # FRAMEWORK CI/CD (triggers on examples/retail/**)
 │   ├── semantic_view_ci.yml              # PR: audit → question bank eval → PR comment
 │   ├── semantic_view_cd.yml              # Merge: audit gate → final eval → deploy to PROD
 │   ├── agent_ci.yml                      # PR: deploy to DEV → native GPA eval → PR comment
 │   └── agent_cd.yml                      # Merge: native GPA eval gate → deploy to PROD
 ├── config/
-│   ├── environments.yaml                 # Database, schema, warehouse, SV, agent per env
-│   ├── thresholds.yaml                   # Accuracy thresholds: DEV 60% → PROD 85%
-│   └── monitoring.yaml                   # Alert thresholds, schedules, token cost estimates
-├── demo/
-│   ├── demo_runbook.md                   # Step-by-step demo script
-│   ├── snowsight_walkthrough.md          # Snowsight UI walkthrough
-│   └── market_positioning.md             # Market positioning & differentiation
+│   └── defaults.yaml                     # FRAMEWORK defaults: LLM models + credit pricing (universal)
+├── examples/retail/                      # INSTANCE: bundled retail example (copy to make your own)
+│   ├── config/                           # environments.yaml, thresholds.yaml, monitoring.yaml, schedules.yaml
+│   ├── semantic_views/{dev,prod}/        # CREATE SEMANTIC VIEW DDL per environment
+│   ├── agents/{dev,prod}/                # CREATE CORTEX AGENT DDL per environment
+│   ├── question_banks/{semantic_view,agent}/  # YAML question banks
+│   ├── data/                             # 02_create_tables, 03_seed_data, 06_eval_dataset_setup (token-rendered)
+│   ├── seed/seed_demo.py                 # Demo dashboard seeding (invoked by bootstrap)
+│   └── demo/                             # demo_runbook.md, snowsight_walkthrough.md, market_positioning.md
 ├── AGENT.md                              # This file
 └── README.md                             # Full documentation
 ```
@@ -160,9 +155,9 @@ Deploy/redeploy: `cd monitoring && snow streamlit deploy --replace`.
 
 | Workflow | Trigger | What |
 |----------|---------|------|
-| `semantic_view_ci.yml` | PR on `semantic_views/` | Audit → eval on DEV → PR comment |
+| `semantic_view_ci.yml` | PR on `examples/retail/semantic_views/` | Audit → eval on DEV → PR comment |
 | `semantic_view_cd.yml` | Merge to main | Audit gate → eval on DEV → deploy to PROD |
-| `agent_ci.yml` | PR on `agents/` | Deploy to DEV → native GPA eval → PR comment |
+| `agent_ci.yml` | PR on `examples/retail/agents/` | Deploy to DEV → native GPA eval → PR comment |
 | `agent_cd.yml` | Merge to main | Native GPA eval on DEV → deploy to PROD |
 
 ### Connection Pattern
@@ -206,10 +201,14 @@ The warehouse is passed at request time via `tool_resources.execution_environmen
 - LLM judges auto-selected by Snowflake (cross-region inference)
 
 ### Configuration Files
-- `config/environments.yaml` — per-env database, schema, warehouse, SV name, agent name, LLM model config (`llm.model`, `llm.judge_model`)
-- `config/agent_evaluation_config.yaml` — reusable YAML config following Snowflake's Agent Evaluation YAML spec
-- `config/thresholds.yaml` — graduated accuracy thresholds (DEV 60% → PROD 85%)
-- `config/monitoring.yaml` — alert thresholds, schedules, token cost estimates, notification settings
+
+The framework reads a merged config: universal **defaults** at the repo root, overlaid by the active **instance** (set via `AIOPS_INSTANCE`, default `examples/retail`).
+
+- `config/defaults.yaml` — FRAMEWORK defaults (universal): LLM model selection (`llm.model`, `llm.judge_model`) + Snowflake per-model credit pricing
+- `examples/retail/config/environments.yaml` — INSTANCE: per-env database, schema, warehouse, SV/agent names, paths, and the `example` orchestration block (data_scripts, seed_module)
+- `examples/retail/config/thresholds.yaml` — graduated accuracy thresholds (DEV 60% → PROD 85%)
+- `examples/retail/config/monitoring.yaml` — alert thresholds, schedules, token cost estimates, notification settings
+- `examples/retail/config/schedules.yaml` — task schedule profiles (demo/prod)
 
 ## GitHub Actions Secrets Required
 

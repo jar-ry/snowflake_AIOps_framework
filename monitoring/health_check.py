@@ -5,7 +5,7 @@ Comprehensive health check for all PROD services.
 Runs a battery of checks and generates a report. Can be called:
   - Locally: python monitoring/health_check.py --environment prod
   - By GitHub Actions: scheduled weekly
-  - Results logged to RETAIL_AI_EVAL.MONITORING.HEALTH_CHECK_RESULTS
+  - Results logged to the eval database's MONITORING.HEALTH_CHECK_RESULTS table
 
 Checks:
   1. Semantic view existence and accessibility

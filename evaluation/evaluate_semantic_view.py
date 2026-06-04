@@ -3,7 +3,7 @@ evaluate_semantic_view.py
 Batch evaluation of a semantic view against question banks.
 
 Usage:
-    python evaluate_semantic_view.py --environment dev --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
+    python evaluate_semantic_view.py --environment dev          # uses the active instance's SV
     python evaluate_semantic_view.py --environment dev --categories easy,hard
     python evaluate_semantic_view.py --environment dev --git-sha abc123 --git-branch feature/update-sv
 """

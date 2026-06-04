@@ -29,10 +29,11 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "evaluation"))
 
 import snowflake.connector
+from utils import load_config as _load_merged_config, instance_dir, instance_path  # noqa: E402
 
 
 def load_schedule_config(profile: str = "demo") -> dict:
-    config_path = os.path.join(PROJECT_ROOT, "config", "schedules.yaml")
+    config_path = os.path.join(instance_dir(), "config", "schedules.yaml")
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
     profiles = config.get("profiles", {})
@@ -43,8 +44,8 @@ def load_schedule_config(profile: str = "demo") -> dict:
 
 
 def load_env_config() -> dict:
-    with open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")) as f:
-        return yaml.safe_load(f)
+    """Merged framework-defaults + active-instance config (see evaluation/utils)."""
+    return _load_merged_config()
 
 
 def build_sql_tokens(cfg: dict) -> dict:
@@ -372,7 +373,7 @@ def run_first_eval(conn):
     print(f"{'='*60}")
     try:
         audit_path = os.path.join(PROJECT_ROOT, "evaluation", "audit_semantic_view.py")
-        ddl_path = os.path.join(PROJECT_ROOT, load_env_config()["environments"]["dev"]["sv_yaml_path"])
+        ddl_path = instance_path(load_env_config()["environments"]["dev"]["sv_yaml_path"])
         output_path = os.path.join(PROJECT_ROOT, "first_eval_audit.json")
 
         import subprocess
@@ -411,7 +412,7 @@ def create_tasks_directly(cur, schedule_profile="demo"):
     print(f"{'='*60}")
 
     schedules = load_schedule_config(schedule_profile)
-    config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
+    config = load_env_config()
     pricing = config.get("pricing", {})
     default_in = pricing.get("default_input_credits_per_million", 1.0)
     default_out = pricing.get("default_output_credits_per_million", 1.0)
@@ -568,6 +569,15 @@ def deploy_dashboard_sis():
     try:
         import subprocess
         monitoring_dir = os.path.join(PROJECT_ROOT, "monitoring")
+        # Render the SiS descriptor from the active instance config before deploy.
+        # snow reads snowflake.yml from disk; the tracked artifact is the template.
+        template_path = os.path.join(monitoring_dir, "snowflake.yml.template")
+        rendered_path = os.path.join(monitoring_dir, "snowflake.yml")
+        with open(template_path) as tf:
+            with open(rendered_path, "w") as rf:
+                rf.write(render_sql(tf.read()))
+        ev = load_env_config()["eval"]
+        dashboard_fqn = f"{ev['database']}.{ev['monitoring_schema']}.AI_MONITORING_DASHBOARD"
         conn_name = os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"
         result = subprocess.run(
             ["snow", "streamlit", "deploy", "--replace", "--connection", conn_name],
@@ -577,7 +587,7 @@ def deploy_dashboard_sis():
             timeout=120,
         )
         if result.returncode == 0:
-            print("  OK: AI_MONITORING_DASHBOARD deployed to RETAIL_AI_EVAL.MONITORING")
+            print(f"  OK: AI_MONITORING_DASHBOARD deployed to {dashboard_fqn}")
             for line in result.stdout.strip().split("\n")[-3:]:
                 print(f"    {line}")
         else:
@@ -596,286 +606,48 @@ def deploy_dashboard_sis():
         print("  Deploy manually: cd monitoring && snow streamlit deploy --replace")
 
 
-def populate_dashboard(conn):
-    print(f"\n{'='*60}")
-    print(f"  Populating Dashboard Data (health check + eval + agent queries)")
-    print(f"{'='*60}")
+def run_example_seed(conn):
+    """Invoke the active instance's configured demo-seeding module (if any).
 
-    config = yaml.safe_load(open(os.path.join(PROJECT_ROOT, "config", "environments.yaml")))
-    pricing = config.get("pricing", {})
-    default_in = pricing.get("default_input_credits_per_million", 1.0)
-    default_out = pricing.get("default_output_credits_per_million", 1.0)
-    models = pricing.get("models", {})
-    case_parts = []
-    for model, rates in models.items():
-        case_parts.append(
-            f"WHEN model_used = '{model}' THEN "
-            f"COALESCE(input_tokens,0)/1000000.0*{rates['input_credits_per_million']} + COALESCE(output_tokens,0)/1000000.0*{rates['output_credits_per_million']}"
-        )
-    case_parts.append(f"ELSE COALESCE(input_tokens,0)/1000000.0*{default_in} + COALESCE(output_tokens,0)/1000000.0*{default_out}")
-    credits_expr = "CASE " + " ".join(case_parts) + " END"
-
-    import subprocess
-    python_exe = sys.executable
-
-    print("\n  [1/3] Running health check...")
-    try:
-        result = subprocess.run(
-            [python_exe, os.path.join(PROJECT_ROOT, "monitoring", "health_check.py"),
-             "--environment", "dev", "--output", os.path.join(PROJECT_ROOT, "health.json")],
-            capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=120,
-            env={**os.environ, "SNOWFLAKE_CONNECTION_NAME": os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"},
-        )
-        healthy = result.stdout.count("[OK]")
-        total = result.stdout.count("Running:")
-        print(f"    Health checks: {healthy}/{total} passed")
-    except Exception as e:
-        print(f"    WARN: {str(e)[:100]}")
-
-    print("\n  [2/3] Running SV evaluation (easy questions)...")
-    try:
-        result = subprocess.run(
-            [python_exe, os.path.join(PROJECT_ROOT, "evaluation", "evaluate_semantic_view.py"),
-             "--environment", "dev",
-             "--semantic-view", "RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV",
-             "--categories", "easy",
-             "--output", os.path.join(PROJECT_ROOT, "sv_eval.json")],
-            capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=300,
-            env={**os.environ, "SNOWFLAKE_CONNECTION_NAME": os.getenv("SNOWFLAKE_CONNECTION_NAME") or "default"},
-        )
-        for line in result.stdout.strip().split("\n"):
-            if "Accuracy:" in line or "Result:" in line:
-                print(f"    {line.strip()}")
-    except Exception as e:
-        print(f"    WARN: {str(e)[:100]}")
-
-    print("\n  [3/3] Sending sample queries to agent (populates observability)...")
-    import requests as req
-    token = conn.rest.token
-    host = conn.host.replace("_", "-").lower()
-    agent_url = f"https://{host}/api/v2/databases/RETAIL_AI_DEV/schemas/SEMANTIC/agents/RETAIL_AGENT:run"
-    agent_headers = {
-        "Authorization": f'Snowflake Token="{token}"',
-        "Content-Type": "application/json",
-    }
-
-    sample_questions = []
-    try:
-        import yaml as _yaml
-        for bank_file in [
-            os.path.join(PROJECT_ROOT, "question_banks", "agent", "answerable_questions.yaml"),
-            os.path.join(PROJECT_ROOT, "question_banks", "semantic_view", "hard_questions.yaml"),
-            os.path.join(PROJECT_ROOT, "question_banks", "agent", "adversarial_questions.yaml"),
-        ]:
-            with open(bank_file) as f:
-                bank = _yaml.safe_load(f)
-            for q in bank.get("questions", []):
-                sample_questions.append(q["question"])
-    except Exception:
-        sample_questions = [
-            "What is our total revenue?",
-            "How many customers do we have?",
-            "Show me top 5 products by revenue",
-            "What is the return rate?",
-            "Compare revenue across customer segments",
-        ]
-    success = 0
-    for q in sample_questions:
-        try:
-            payload = {
-                "messages": [{"role": "user", "content": [{"type": "text", "text": q}]}],
-            }
-            resp = req.post(agent_url, json=payload, headers=agent_headers, timeout=120, stream=True)
-            has_error = False
-            has_text = False
-            for line in resp.iter_lines(decode_unicode=True):
-                if not line:
-                    continue
-                if line.startswith("event: error"):
-                    has_error = True
-                elif line.startswith("data:"):
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(data)
-                        if "message" in event and "code" in event:
-                            has_error = True
-                            print(f"    SKIP: {q} ({event['message'][:60]})")
-                            break
-                        if "text" in event:
-                            has_text = True
-                    except json.JSONDecodeError:
-                        pass
-            if has_text and not has_error:
-                success += 1
-                print(f"    OK: {q}")
-            elif not has_error:
-                print(f"    SKIP: {q} (no response)")
-        except Exception as e:
-            print(f"    SKIP: {q} ({str(e)[:60]})")
-
-    print(f"\n    Agent queries: {success}/{len(sample_questions)} successful")
-    if success > 0:
-        print("    Observability data will appear in Snowsight under RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT.")
-        print("    Aggregating into dashboard tables (normally done by daily tasks)...")
-        time.sleep(5)
-        try:
-            cur = conn.cursor()
-            cur.execute(f'''
-INSERT INTO RETAIL_AI_EVAL.MONITORING.USAGE_METRICS (
-    metric_date, environment, service_type, agent_or_sv_name,
-    total_requests, successful_requests, failed_requests,
-    total_input_tokens, total_output_tokens, total_tokens,
-    estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
-SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'),
-    CASE WHEN span_name LIKE 'ReasoningAgentStep%' THEN 'cortex_agent'
-         WHEN span_name ILIKE '%Analyst%' OR span_name ILIKE '%SqlExecution%' THEN 'cortex_analyst' ELSE 'other' END,
-    COALESCE(agent_name, 'unknown'),
-    COUNT(DISTINCT trace_id), COUNT_IF(status_code = 'STATUS_CODE_OK'), COUNT_IF(status_code != 'STATUS_CODE_OK'),
-    COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(total_tokens),0),
-    SUM({credits_expr}), AVG(planning_duration_ms),
-    APPROX_PERCENTILE(planning_duration_ms,0.5), APPROX_PERCENTILE(planning_duration_ms,0.95),
-    APPROX_PERCENTILE(planning_duration_ms,0.99), 0
-FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
-WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()+1
-  AND agent_name = 'RETAIL_AGENT'
-GROUP BY 1,2,3,4
-''')
-            cur.execute('''
-INSERT INTO RETAIL_AI_EVAL.MONITORING.INTERACTION_QUALITY_DAILY (
-    summary_date, environment, agent_name,
-    total_requests, total_threads, flagged_requests, flagged_request_pct,
-    tool_looping_count, excessive_steps_count, slow_request_count,
-    high_token_burn_count, planning_error_count,
-    single_turn_dropoff_count, rapid_rephrasing_count, abandoned_count,
-    critical_count, warning_count)
-SELECT CURRENT_DATE(), COALESCE(database_name, 'UNKNOWN'), COALESCE(agent_name, 'unknown'),
-    COUNT(DISTINCT trace_id), COUNT(DISTINCT thread_id),
-    COUNT_IF(total_tokens > 50000 OR planning_duration_ms > 30000),
-    ROUND(COUNT_IF(total_tokens > 50000 OR planning_duration_ms > 30000) * 100.0 / NULLIF(COUNT(DISTINCT trace_id),0), 2),
-    0, COUNT_IF(step_number > 5), COUNT_IF(planning_duration_ms > 30000),
-    COUNT_IF(total_tokens > 50000), COUNT_IF(planning_status != 'success' AND planning_status IS NOT NULL),
-    0, 0, 0, COUNT_IF(total_tokens > 100000), COUNT_IF(total_tokens > 50000 AND total_tokens <= 100000)
-FROM RETAIL_AI_EVAL.OBSERVABILITY.AGENT_TRACES
-WHERE event_time >= DATEADD('day',-1,CURRENT_DATE()) AND event_time < CURRENT_DATE()+1
-  AND agent_name = 'RETAIL_AGENT' AND span_name LIKE 'ReasoningAgentStep%'
-GROUP BY 1,2,3
-''')
-            print("    Dashboard tables populated.")
-        except Exception as e:
-            print(f"    WARN: Could not aggregate: {str(e)[:100]}")
-
-    print("\n  [4/4] Generating mock user feedback...")
-    generate_mock_feedback(conn)
-
-
-def generate_mock_feedback(conn):
-    cur = conn.cursor()
-    feedback_data = [
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What is our total revenue?",
-         "Total revenue is $2.4M across all channels.", 5,
-         "Great answer, exactly what I needed!", "accuracy"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Show me top products by revenue",
-         "Here are the top 5 products by revenue...", 4,
-         "Good breakdown but would be nice to see percentages too", "completeness"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "How many customers do we have?",
-         "We have 500 customers in total.", 5,
-         "Quick and accurate", "accuracy"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What is the return rate?",
-         "The overall return rate is 12.3%.", 3,
-         "I expected a breakdown by product category", "completeness"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Compare revenue across segments",
-         "Premium segment leads with 45% of revenue...", 4,
-         "Useful comparison, could use a chart next time", "presentation"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "What was last month revenue?",
-         "I'm unable to determine the time period from the data.", 2,
-         "It should know what last month means", "accuracy"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Show me slow-selling products",
-         "Products with lowest sales velocity: ...", 4,
-         "Helpful, saved me time writing a query", "usefulness"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Customer acquisition trend",
-         "Monthly new customer signups show...", 1,
-         "Completely wrong data, these numbers don't match our reports", "accuracy"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Average order value by store",
-         "Store A: $85, Store B: $72, Store C: $91...", 5,
-         "Perfect, exactly what the exec team asked for", "usefulness"),
-        ("RETAIL_AI_DEV", "agent", "RETAIL_AGENT", "Which customers are at risk of churning?",
-         "Based on order recency and frequency...", 4,
-         "Good heuristic approach, would like ML-based scoring next", "completeness"),
-    ]
-
-    try:
-        values_parts = []
-        for i, (env, src, agent, query, response, rating, text, category) in enumerate(feedback_data):
-            escaped_query = query.replace("'", "''")
-            escaped_response = response.replace("'", "''")
-            escaped_text = text.replace("'", "''")
-            values_parts.append(f"""
-                SELECT 'fb_demo_{i+1}', '{env}', '{src}', '{agent}',
-                       '{escaped_query}', '{escaped_response}', {rating},
-                       '{escaped_text}', '{category}', NULL, 'DEMO_USER',
-                       DATEADD('hour', -{(len(feedback_data)-i)*2}, CURRENT_TIMESTAMP())
-            """)
-
-        insert_sql = f"""
-            INSERT INTO RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
-                (feedback_id, environment, source, agent_or_sv_name, user_query,
-                 agent_response, feedback_rating, feedback_text, feedback_category,
-                 sentiment_score, user_name, created_at)
-            {' UNION ALL '.join(values_parts)}
-        """
-        cur.execute(insert_sql)
-        print(f"    Inserted {len(feedback_data)} feedback entries")
-
-        cur.execute("""
-            UPDATE RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
-            SET sentiment_score = SNOWFLAKE.CORTEX.SENTIMENT(COALESCE(feedback_text,'') || ' Rating: ' || feedback_rating::STRING)
-            WHERE sentiment_score IS NULL AND feedback_id LIKE 'fb_demo_%'
-        """)
-        print("    Sentiment analysis complete")
-
-        cur.execute(f"""
-            INSERT INTO RETAIL_AI_EVAL.MONITORING.FEEDBACK_DAILY_SUMMARY
-                (summary_date, environment, agent_or_sv_name, total_feedback,
-                 positive_count, neutral_count, negative_count, avg_rating,
-                 avg_sentiment_score, negative_pct, feedback_categories, computed_at)
-            SELECT CURRENT_DATE(), 'RETAIL_AI_DEV', 'RETAIL_AGENT',
-                COUNT(*),
-                COUNT_IF(feedback_rating >= 4),
-                COUNT_IF(feedback_rating = 3),
-                COUNT_IF(feedback_rating <= 2),
-                AVG(feedback_rating),
-                AVG(sentiment_score),
-                ROUND(COUNT_IF(feedback_rating <= 2) * 100.0 / COUNT(*), 1),
-                OBJECT_CONSTRUCT('accuracy', COUNT_IF(feedback_category='accuracy'),
-                                 'completeness', COUNT_IF(feedback_category='completeness'),
-                                 'presentation', COUNT_IF(feedback_category='presentation'),
-                                 'usefulness', COUNT_IF(feedback_category='usefulness')),
-                CURRENT_TIMESTAMP()
-            FROM RETAIL_AI_EVAL.MONITORING.USER_FEEDBACK
-            WHERE feedback_id LIKE 'fb_demo_%'
-        """)
-        print("    Feedback daily summary aggregated")
-    except Exception as e:
-        print(f"    WARN: Feedback generation failed: {str(e)[:120]}")
-
+    The framework stays domain-agnostic: each example owns its seed logic and
+    exposes a seed(conn) entry point. Configured via the example.seed_module key.
+    """
+    cfg = load_env_config()
+    seed_rel = cfg.get("example", {}).get("seed_module")
+    if not seed_rel:
+        print("  No example seed_module configured; skipping demo seeding.")
+        return
+    seed_path = instance_path(seed_rel)
+    if not os.path.exists(seed_path):
+        print(f"  SKIP: seed module not found ({seed_rel})")
+        return
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("example_seed", seed_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if hasattr(mod, "seed"):
+        mod.seed(conn)
+    else:
+        print(f"  WARN: seed module {seed_rel} has no seed(conn) entry point")
 
 def print_summary():
     print(f"\n{'='*60}")
     print(f"  SETUP COMPLETE")
     print(f"{'='*60}")
-    print("""
+    cfg = load_env_config()
+    dev = cfg["environments"]["dev"]
+    ev = cfg["eval"]
+    roles = cfg["roles"]
+    print(f"""
   What was created:
-    Databases:    RETAIL_AI_DEV, RETAIL_AI_PROD, RETAIL_AI_EVAL
-    Tables:       6 retail tables (500 customers, 5K orders, etc.) in DEV + PROD
-    RBAC:         4 roles (ANALYST, REVIEWER, DEPLOYER, ADMIN)
-    Observability: 4 views over ai_observability_events
-    Eval dataset: 15 ground truth questions in DEV + PROD
-    Monitoring:   7 tables, 7 views, 5 tasks (running), 7 alerts (active)
-    Dashboard:    RETAIL_AI_EVAL.MONITORING.AI_MONITORING_DASHBOARD (SiS)
-    Semantic View: RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
-    Agent:        RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
+    Databases:     {dev['database']}, {cfg['environments']['prod']['database']}, {ev['database']}
+    RBAC:          4 roles ({roles['analyst']}, {roles['reviewer']}, {roles['deployer']}, {roles['admin']})
+    Observability: views over ai_observability_events
+    Monitoring:    tables, views, tasks (running), alerts (active)
+    Dashboard:     {ev['database']}.{ev['monitoring_schema']}.AI_MONITORING_DASHBOARD (SiS)
+    Semantic View: {dev['semantic_view']}
+    Agent:         {dev['agent_name']}
+    Example data:  seeded from the active instance ({instance_dir()})
 
   PROD is empty — SV and agent are deployed on merge via CD pipeline.
 
@@ -883,13 +655,17 @@ def print_summary():
     1. Open the dashboard in Snowsight:
        Projects → Streamlit → AI_MONITORING_DASHBOARD
     2. Chat with the agent in Snowsight:
-       AI & ML → Agents → RETAIL_AGENT
+       AI & ML → Agents → {dev['agent_short']}
     3. Push to GitHub and open a PR to test CI/CD
 """)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Bootstrap the AI Evaluation Framework")
+    parser.add_argument("--example", default="examples/retail",
+                        help="Instance/example directory to set up (default: examples/retail)")
+    parser.add_argument("--render", metavar="SQL_FILE",
+                        help="Render a token SQL file against the active instance config and print to stdout (no execution)")
     parser.add_argument("--skip-sql", action="store_true", help="Skip SQL setup (if already run)")
     parser.add_argument("--skip-deploy", action="store_true", help="Skip SV/agent deployment")
     parser.add_argument("--skip-eval", action="store_true", help="Skip first evaluation")
@@ -898,9 +674,22 @@ def main():
                         help="Task schedule profile: 'demo' (every 15 min) or 'prod' (realistic daily/weekly)")
     args = parser.parse_args()
 
+    # Resolve the active instance. AIOPS_INSTANCE drives all config + path lookups
+    # (evaluation/utils). Set it before any config is read. An absolute --example
+    # is honoured as-is; a relative one resolves against the repo root.
+    if not os.environ.get("AIOPS_INSTANCE"):
+        example = args.example if os.path.isabs(args.example) else os.path.join(PROJECT_ROOT, args.example)
+        os.environ["AIOPS_INSTANCE"] = os.path.abspath(example)
+
+    if args.render:
+        with open(args.render) as f:
+            sys.stdout.write(render_sql(f.read()))
+        return
+
     print("\n" + "="*60)
     print("  AI EVALUATION FRAMEWORK — BOOTSTRAP")
     print("="*60)
+    print(f"  Instance: {instance_dir()}")
 
     conn = get_connection()
     cur = conn.cursor()
@@ -913,18 +702,16 @@ def main():
     wh = load_env_config()["eval"]["warehouse"]
 
     if not args.skip_sql:
+        # Framework infrastructure scripts (domain-agnostic, token-rendered).
         sql_scripts = [
-            ("setup/01_create_databases.sql", "Step 1/11: Create databases and eval tables"),
-            ("setup/02_create_tables.sql", "Step 2/11: Create retail tables"),
-            ("setup/03_seed_data.sql", "Step 3/11: Seed mock data (500 customers, 5K orders)"),
-            ("setup/04_rbac_setup.sql", "Step 4/11: Create RBAC roles and grants"),
-            ("setup/05_observability_setup.sql", "Step 5/11: Create observability views"),
-            ("setup/06_eval_dataset_setup.sql", "Step 6/11: Create evaluation datasets"),
-            ("setup/07_monitoring_tables.sql", "Step 7/11: Create monitoring tables"),
-            ("setup/08_monitoring_tasks.sql", "Step 8/11: Create monitoring tasks"),
-            ("setup/09_monitoring_views.sql", "Step 9/11: Create monitoring views"),
-            ("setup/10_monitoring_alerts.sql", "Step 10/11: Create monitoring alerts"),
-            ("setup/11_interaction_quality_engine.sql", "Step 11/11: Create interaction quality engine"),
+            ("setup/01_create_databases.sql", "Framework 1/8: Create databases, schemas, eval tables, warehouse"),
+            ("setup/04_rbac_setup.sql", "Framework 2/8: Create RBAC roles and grants"),
+            ("setup/05_observability_setup.sql", "Framework 3/8: Create observability views"),
+            ("setup/07_monitoring_tables.sql", "Framework 4/8: Create monitoring tables"),
+            ("setup/08_monitoring_tasks.sql", "Framework 5/8: Create monitoring tasks"),
+            ("setup/09_monitoring_views.sql", "Framework 6/8: Create monitoring views"),
+            ("setup/10_monitoring_alerts.sql", "Framework 7/8: Create monitoring alerts"),
+            ("setup/11_interaction_quality_engine.sql", "Framework 8/8: Create interaction quality engine"),
         ]
 
         cur.execute(f"CREATE WAREHOUSE IF NOT EXISTS {wh} WAREHOUSE_SIZE = 'XSMALL' AUTO_SUSPEND = 60 AUTO_RESUME = TRUE")
@@ -936,6 +723,15 @@ def main():
                 run_sql_file(conn, filepath, desc)
             else:
                 print(f"  SKIP: {script} (not found)")
+
+        # Example/instance data scripts (domain-specific), run after framework infra.
+        data_scripts = load_env_config().get("example", {}).get("data_scripts", [])
+        for i, rel in enumerate(data_scripts, 1):
+            filepath = instance_path(rel)
+            if os.path.exists(filepath):
+                run_sql_file(conn, filepath, f"Example data {i}/{len(data_scripts)}: {rel}")
+            else:
+                print(f"  SKIP: {rel} (not found)")
 
         create_tasks_directly(cur, schedule_profile=args.schedule_profile)
     else:
@@ -960,7 +756,7 @@ def main():
         run_first_eval(conn)
 
     if not args.skip_populate:
-        populate_dashboard(conn)
+        run_example_seed(conn)
 
     conn.close()
 

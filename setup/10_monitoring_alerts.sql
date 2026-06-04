@@ -220,7 +220,7 @@ ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_HEALTH_FAILURE RESUME;
 -- Optional: Email notification integration
 -- Uncomment and configure if you want email alerts.
 -- ============================================================
--- CREATE OR REPLACE NOTIFICATION INTEGRATION RETAIL_AI_EMAIL_ALERTS
+-- CREATE OR REPLACE NOTIFICATION INTEGRATION AIOPS_EMAIL_ALERTS
 --     TYPE = EMAIL
 --     ENABLED = TRUE
 --     ALLOWED_RECIPIENTS = ('your-team@company.com');
@@ -228,8 +228,8 @@ ALTER ALERT {{DB_EVAL}}.MONITORING.ALERT_HEALTH_FAILURE RESUME;
 -- To wire an alert to email, modify the THEN clause:
 -- ALTER ALERT ... MODIFY CONDITION ... THEN
 --   CALL SYSTEM$SEND_EMAIL(
---     'RETAIL_AI_EMAIL_ALERTS',
+--     'AIOPS_EMAIL_ALERTS',
 --     'your-team@company.com',
---     'RETAIL AI Alert: <type>',
+--     'AIOps Alert: <type>',
 --     '<message body>'
 --   );

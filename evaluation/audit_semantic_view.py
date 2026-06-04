@@ -22,9 +22,9 @@ Can run in two modes:
   - Live mode (--live): introspects a deployed semantic view via DESCRIBE
 
 Usage:
-    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.yaml
-    python audit_semantic_view.py --live --semantic-view RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
-    python audit_semantic_view.py --ddl-file semantic_views/dev/retail_analytics_sv.yaml --output audit_report.json
+    python audit_semantic_view.py --environment dev          # uses the active instance's SV YAML
+    python audit_semantic_view.py --ddl-file <path/to/sv.yaml>
+    python audit_semantic_view.py --live --semantic-view DB.SCHEMA.MY_SV --output audit_report.json
 """
 import argparse
 import json
@@ -34,7 +34,7 @@ import os
 import yaml
 
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import get_connection, execute_sql, load_config
+from utils import get_connection, execute_sql, load_config, instance_path
 
 
 SEVERITY_ORDER = {"CRITICAL": 0, "ERROR": 1, "HIGH": 2, "WARNING": 3, "MEDIUM": 4, "INFO": 5, "LOW": 6}
@@ -516,8 +516,9 @@ def main():
 
     ddl_file = args.ddl_file
     if not ddl_file and not args.live:
-        # Default to the environment's SV YAML from config.
-        ddl_file = load_config()["environments"][args.environment]["sv_yaml_path"]
+        # Default to the environment's SV YAML from config (resolved against the instance dir).
+        rel = load_config()["environments"][args.environment]["sv_yaml_path"]
+        ddl_file = instance_path(rel)
 
     if ddl_file:
         with open(ddl_file, "r") as f:

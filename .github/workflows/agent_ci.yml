@@ -4,8 +4,8 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'agents/**'
-      - 'question_banks/agent/**'
+      - 'examples/retail/agents/**'
+      - 'examples/retail/question_banks/agent/**'
 
 permissions:
   contents: read
@@ -16,6 +16,7 @@ jobs:
     name: "Native Snowflake Agent Evaluation"
     runs-on: ubuntu-latest
     env:
+      AIOPS_INSTANCE: examples/retail
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}

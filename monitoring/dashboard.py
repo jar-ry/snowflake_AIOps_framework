@@ -13,7 +13,13 @@ session = get_active_session()
 
 # The dashboard is deployed into the eval database; derive it from the session so
 # the same code works for any deployment (no hardcoded database name).
-EVAL_DB = (session.get_current_database() or "RETAIL_AI_EVAL").strip('"')
+EVAL_DB = (session.get_current_database() or "").strip('"')
+if not EVAL_DB:
+    st.error(
+        "Could not determine the eval database from the current session. "
+        "Deploy this app into the eval database's MONITORING schema."
+    )
+    st.stop()
 MON = f"{EVAL_DB}.MONITORING"
 OBS = f"{EVAL_DB}.OBSERVABILITY"
 

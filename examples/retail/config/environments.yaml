@@ -1,0 +1,72 @@
+# Retail example — INSTANCE config.
+#
+# This file (plus the sibling thresholds/monitoring/schedules YAMLs) is the only
+# place a new instance needs to edit. Universal defaults (llm models, Snowflake
+# credit pricing) live in the framework's config/defaults.yaml and are merged
+# UNDER this file by evaluation/utils.load_config() — so you may override them
+# here if needed, but normally do not.
+#
+# To create a new instance: copy this whole examples/<name>/ directory, then
+# rename the databases / roles / schemas / SV / agent below to your own.
+#
+# All *_path / *_dir values are resolved relative to THIS example's directory
+# (the instance dir), not the repo root.
+
+environments:
+  dev:
+    database: RETAIL_AI_DEV
+    schema: ANALYTICS
+    semantic_schema: SEMANTIC
+    warehouse: RETAIL_AI_EVAL_WH
+    connection_name: default
+    semantic_view: RETAIL_AI_DEV.SEMANTIC.RETAIL_ANALYTICS_SV
+    agent_name: RETAIL_AI_DEV.SEMANTIC.RETAIL_AGENT
+    semantic_view_short: RETAIL_ANALYTICS_SV
+    agent_short: RETAIL_AGENT
+    sv_yaml_path: semantic_views/dev/retail_analytics_sv.yaml
+    agent_sql_path: agents/dev/retail_agent.sql
+
+  prod:
+    database: RETAIL_AI_PROD
+    schema: ANALYTICS
+    semantic_schema: SEMANTIC
+    warehouse: RETAIL_AI_EVAL_WH
+    connection_name: default
+    semantic_view: RETAIL_AI_PROD.SEMANTIC.RETAIL_ANALYTICS_SV
+    agent_name: RETAIL_AI_PROD.SEMANTIC.RETAIL_AGENT
+    semantic_view_short: RETAIL_ANALYTICS_SV
+    agent_short: RETAIL_AGENT
+    sv_yaml_path: semantic_views/prod/retail_analytics_sv.yaml
+    agent_sql_path: agents/prod/retail_agent.sql
+
+eval:
+  database: RETAIL_AI_EVAL
+  schema: RESULTS
+  monitoring_schema: MONITORING
+  observability_schema: OBSERVABILITY
+  warehouse: RETAIL_AI_EVAL_WH
+  # Eval dataset table created in each env's semantic_schema (data/06_eval_dataset_setup.sql)
+  dataset_table: RETAIL_AGENT_EVAL_DATASET
+
+# RBAC role names (created by the framework's setup/04_rbac_setup.sql). Clients map these onto their own roles.
+roles:
+  analyst: RETAIL_AI_ANALYST
+  reviewer: RETAIL_AI_REVIEWER
+  deployer: RETAIL_AI_DEPLOYER
+  admin: RETAIL_AI_ADMIN
+
+# Question bank locations (relative to this example's directory).
+question_banks:
+  agent_dir: question_banks/agent
+  semantic_view_dir: question_banks/semantic_view
+
+# Example orchestration — consumed by setup/bootstrap.py --example.
+# data_scripts run (token-rendered) after the framework infra scripts;
+# seed_module runs after SV/agent deploy to populate demo dashboard data.
+# All paths are relative to this example's directory.
+example:
+  data_scripts:
+    - data/02_create_tables.sql
+    - data/03_seed_data.sql
+    - data/06_eval_dataset_setup.sql
+  seed_module: seed/seed_demo.py
