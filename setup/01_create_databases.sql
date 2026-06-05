@@ -54,43 +54,8 @@ CREATE TABLE IF NOT EXISTS {{DB_EVAL}}.RESULTS.SEMANTIC_VIEW_EVAL_DETAILS (
     eval_timestamp      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
-CREATE TABLE IF NOT EXISTS {{DB_EVAL}}.RESULTS.AGENT_EVAL_RUNS (
-    eval_run_id         STRING DEFAULT UUID_STRING(),
-    environment         STRING,
-    agent_name          STRING,
-    git_commit_sha      STRING,
-    git_branch          STRING,
-    total_questions     INTEGER,
-    passed_questions    INTEGER,
-    failed_questions    INTEGER,
-    accuracy_pct        FLOAT,
-    threshold_pct       FLOAT,
-    passed_threshold    BOOLEAN,
-    avg_context_relevance   FLOAT,
-    avg_groundedness        FLOAT,
-    avg_answer_relevance    FLOAT,
-    run_timestamp       TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
-    run_details         VARIANT
-);
-
-CREATE TABLE IF NOT EXISTS {{DB_EVAL}}.RESULTS.AGENT_EVAL_DETAILS (
-    eval_run_id             STRING,
-    question_id             STRING,
-    question_text           STRING,
-    category                STRING,
-    should_answer           BOOLEAN,
-    did_answer              BOOLEAN,
-    expected_answer         STRING,
-    agent_response          STRING,
-    context_relevance_score FLOAT,
-    groundedness_score      FLOAT,
-    answer_relevance_score  FLOAT,
-    overall_score           FLOAT,
-    llm_judge_reasoning     STRING,
-    latency_ms              INTEGER,
-    tool_calls_made         VARIANT,
-    eval_timestamp          TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
-);
+-- Agent evaluation results are stored by Snowflake's native EXECUTE_AI_EVALUATION
+-- and accessed via GET_AI_EVALUATION_DATA(). No custom tables needed.
 
 -- Warehouse for evaluations
 CREATE WAREHOUSE IF NOT EXISTS {{WAREHOUSE}}

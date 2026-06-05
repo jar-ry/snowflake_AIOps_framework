@@ -149,7 +149,7 @@ with tab_overview:
         st.info("No executive summary data available yet.")
 
     st.subheader("Health status")
-    health = run_query("""
+    health = run_query(f"""
         SELECT check_name, environment, target_name, status, details,
                latency_ms, checked_at
         FROM {MON}.V_HEALTH_DASHBOARD
@@ -418,7 +418,61 @@ with tab_costs:
         st.info("No token credit data available yet.")
 
 with tab_alerts:
-    st.header("Active alerts")
+    st.header("Alerts & health")
+
+    # --- Health check failures (top priority) ---
+    health_failures = run_query(f"""
+        SELECT check_name, environment, target_name, status, details, checked_at
+        FROM {MON}.HEALTH_CHECK_RESULTS
+        WHERE status IN ('UNHEALTHY', 'DEGRADED')
+          AND checked_at >= DATEADD('day', -{days_back}, CURRENT_TIMESTAMP()) {env_clause}
+        ORDER BY CASE status WHEN 'UNHEALTHY' THEN 0 ELSE 1 END, checked_at DESC
+        LIMIT 50
+    """)
+
+    if not health_failures.empty:
+        unhealthy_count = len(health_failures[health_failures["STATUS"] == "UNHEALTHY"])
+        degraded_count = len(health_failures[health_failures["STATUS"] == "DEGRADED"])
+        with st.expander(f"🏥 Health check failures ({unhealthy_count} unhealthy, {degraded_count} degraded)", expanded=True):
+            for _, row in health_failures.iterrows():
+                icon = "🔴" if row["STATUS"] == "UNHEALTHY" else "🟠"
+                st.markdown(f"{icon} **{row['CHECK_NAME']}** — `{row['TARGET_NAME']}`")
+                st.caption(f"{row['DETAILS']} | {row['CHECKED_AT']}")
+    else:
+        st.success("All health checks passing.")
+
+    st.divider()
+
+    # --- Alert timeseries ---
+    st.subheader("Alert trend")
+    alert_trend = run_query(f"""
+        SELECT DATE_TRUNC('day', created_at)::DATE AS alert_date,
+               severity,
+               COUNT(*) AS alert_count
+        FROM {MON}.ALERT_HISTORY
+        WHERE created_at >= DATEADD('day', -{days_back}, CURRENT_TIMESTAMP()) {env_clause}
+        GROUP BY 1, 2
+        ORDER BY 1
+    """)
+
+    if not alert_trend.empty:
+        chart = alt.Chart(alert_trend).mark_bar().encode(
+            x=alt.X("ALERT_DATE:T", title="Date"),
+            y=alt.Y("ALERT_COUNT:Q", title="Alerts"),
+            color=alt.Color("SEVERITY:N", scale=alt.Scale(
+                domain=["CRITICAL", "WARNING", "INFO"],
+                range=["#FF4B4B", "#FFA500", "#4B9CD3"]
+            )),
+            tooltip=["ALERT_DATE:T", "SEVERITY:N", "ALERT_COUNT:Q"],
+        ).properties(height=200)
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.caption("No alerts in this period.")
+
+    st.divider()
+
+    # --- Active alerts with filtering ---
+    st.subheader("Active alerts")
 
     active_alerts = run_query(f"""
         SELECT alert_id, alert_type, severity, environment, target_name,
@@ -431,19 +485,37 @@ with tab_alerts:
     """)
 
     if not active_alerts.empty:
+        # Filters
+        col_sev, col_type = st.columns(2)
+        with col_sev:
+            sev_options = ["All"] + sorted(active_alerts["SEVERITY"].unique().tolist())
+            sev_filter = st.selectbox("Severity", sev_options, key="alert_sev_filter")
+        with col_type:
+            type_options = ["All"] + sorted(active_alerts["ALERT_TYPE"].unique().tolist())
+            type_filter = st.selectbox("Alert type", type_options, key="alert_type_filter")
+
+        filtered = active_alerts.copy()
+        if sev_filter != "All":
+            filtered = filtered[filtered["SEVERITY"] == sev_filter]
+        if type_filter != "All":
+            filtered = filtered[filtered["ALERT_TYPE"] == type_filter]
+
+        # KPI row
         c1, c2, c3 = st.columns(3)
-        crit = len(active_alerts[active_alerts["SEVERITY"] == "CRITICAL"])
-        warn = len(active_alerts[active_alerts["SEVERITY"] == "WARNING"])
+        crit = len(filtered[filtered["SEVERITY"] == "CRITICAL"])
+        warn = len(filtered[filtered["SEVERITY"] == "WARNING"])
         with c1:
             st.metric("Critical", crit)
         with c2:
             st.metric("Warning", warn)
         with c3:
-            st.metric("Total active", len(active_alerts))
+            st.metric("Showing", len(filtered))
 
-        for _, alert in active_alerts.iterrows():
+        # Collapsible alert cards
+        for _, alert in filtered.iterrows():
             severity = alert["SEVERITY"]
-            with st.expander(f"{'🔴' if severity == 'CRITICAL' else '🟡'} [{severity}] {alert['ALERT_TYPE']} — {alert['TARGET_NAME']}"):
+            icon = "🔴" if severity == "CRITICAL" else "🟡"
+            with st.expander(f"{icon} [{severity}] {alert['ALERT_TYPE']} — {alert['TARGET_NAME']}", expanded=False):
                 st.write(alert["MESSAGE"])
                 st.caption(
                     f"Metric: {alert['METRIC_VALUE']} | Threshold: {alert['THRESHOLD_VALUE']} | "
@@ -452,19 +524,22 @@ with tab_alerts:
     else:
         st.success("No active alerts.")
 
-    st.subheader("Alert history")
-    alert_history = run_query(f"""
-        SELECT alert_type, severity, environment, target_name,
-               message, metric_value, threshold_value,
-               acknowledged, created_at
-        FROM {MON}.ALERT_HISTORY
-        WHERE created_at >= DATEADD('day', -{days_back}, CURRENT_TIMESTAMP()) {env_clause}
-        ORDER BY created_at DESC
-        LIMIT 200
-    """)
-    if not alert_history.empty:
-        st.dataframe(alert_history)
-    else:
-        st.caption("No alerts in this period.")
+    st.divider()
+
+    # --- Alert history (collapsible) ---
+    with st.expander("Alert history (full table)", expanded=False):
+        alert_history = run_query(f"""
+            SELECT alert_type, severity, environment, target_name,
+                   message, metric_value, threshold_value,
+                   acknowledged, created_at
+            FROM {MON}.ALERT_HISTORY
+            WHERE created_at >= DATEADD('day', -{days_back}, CURRENT_TIMESTAMP()) {env_clause}
+            ORDER BY created_at DESC
+            LIMIT 200
+        """)
+        if not alert_history.empty:
+            st.dataframe(alert_history, use_container_width=True)
+        else:
+            st.caption("No alerts in this period.")
 
 st.caption("Data refreshes every 10 minutes. Powered by the monitoring schema.")

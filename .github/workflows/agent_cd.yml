@@ -76,6 +76,31 @@ jobs:
       - name: Deploy agent to PROD
         run: python setup/deploy.py --target agent --environment prod
 
+      - name: Ensure PROD smoke-test task exists
+        run: |
+          python -c "
+          import os, sys
+          sys.path.insert(0, 'evaluation')
+          from utils import get_connection, load_config
+          cfg = load_config()
+          ev = cfg['eval']
+          db_eval = ev['database']
+          mon = ev['monitoring_schema']
+          wh = ev['warehouse']
+          conn = get_connection()
+          cur = conn.cursor()
+          # Create task only if it does not already exist
+          cur.execute(f'''
+              CREATE TASK IF NOT EXISTS {db_eval}.{mon}.TASK_WEEKLY_AGENT_EVAL
+              WAREHOUSE = {wh}
+              SCHEDULE = 'USING CRON 0 5 * * 0 UTC'
+              AS CALL {db_eval}.{mon}.SP_WEEKLY_AGENT_EVAL()
+          ''')
+          cur.execute(f'ALTER TASK IF EXISTS {db_eval}.{mon}.TASK_WEEKLY_AGENT_EVAL RESUME')
+          print('PROD smoke-test task TASK_WEEKLY_AGENT_EVAL ensured.')
+          conn.close()
+          "
+
       - name: Upload results artifacts
         if: always()
         uses: actions/upload-artifact@v4

@@ -200,8 +200,119 @@ GROUP BY 1,2,3
         except Exception as e:
             print(f"    WARN: Could not aggregate: {str(e)[:100]}")
 
+    # Backfill 14 days of historical data so dashboard trends aren't empty.
+    _seed_historical_data(conn, cfg)
+
     print("\n  [4/4] Generating mock user feedback...")
     _generate_mock_feedback(conn, cfg)
+
+
+def _seed_historical_data(conn, cfg):
+    """Insert 30 days of synthetic historical data into monitoring tables."""
+    dev = cfg["environments"]["dev"]
+    ev = cfg["eval"]
+    db_eval = ev["database"]
+    mon = ev["monitoring_schema"]
+    agent_short = dev["agent_short"]
+    env_name = dev["database"]
+    credits_expr = _credits_expr(cfg)
+
+    cur = conn.cursor()
+    print("\n    Seeding 30 days of historical monitoring data...")
+
+    try:
+        # Clear existing seeded data to avoid duplicates on re-run
+        cur.execute(f"DELETE FROM {db_eval}.{mon}.INTERACTION_QUALITY_DAILY WHERE environment = '{env_name}' AND agent_name = '{agent_short}'")
+        cur.execute(f"DELETE FROM {db_eval}.{mon}.USAGE_METRICS WHERE environment = '{env_name}' AND agent_or_sv_name = '{agent_short}'")
+        cur.execute(f"DELETE FROM {db_eval}.{mon}.FEEDBACK_DAILY_SUMMARY WHERE environment = '{env_name}' AND agent_or_sv_name = '{agent_short}'")
+        cur.execute(f"DELETE FROM {db_eval}.{mon}.SCHEDULED_EVAL_RUNS WHERE run_type = 'weekly_eval' AND target_name = '{agent_short}'")
+
+        # Interaction quality daily (30 days, one row per day)
+        cur.execute(f"""
+            INSERT INTO {db_eval}.{mon}.INTERACTION_QUALITY_DAILY (
+                summary_date, environment, agent_name,
+                total_requests, total_threads, flagged_requests, flagged_request_pct,
+                tool_looping_count, excessive_steps_count, slow_request_count,
+                high_token_burn_count, planning_error_count,
+                single_turn_dropoff_count, rapid_rephrasing_count, abandoned_count,
+                critical_count, warning_count)
+            SELECT
+                DATEADD('day', -seq4(), CURRENT_DATE()) AS summary_date,
+                '{env_name}', '{agent_short}',
+                UNIFORM(25, 65, RANDOM()) AS total_requests,
+                UNIFORM(18, 50, RANDOM()) AS total_threads,
+                UNIFORM(2, 8, RANDOM()) AS flagged_requests,
+                ROUND(UNIFORM(5, 18, RANDOM())::FLOAT, 1) AS flagged_request_pct,
+                UNIFORM(0, 3, RANDOM()), UNIFORM(0, 2, RANDOM()), UNIFORM(1, 4, RANDOM()),
+                UNIFORM(0, 2, RANDOM()), UNIFORM(0, 1, RANDOM()),
+                UNIFORM(2, 8, RANDOM()), UNIFORM(0, 2, RANDOM()), UNIFORM(0, 1, RANDOM()),
+                UNIFORM(0, 1, RANDOM()), UNIFORM(1, 5, RANDOM())
+            FROM TABLE(GENERATOR(ROWCOUNT => 30))
+        """)
+
+        # Usage metrics daily (30 days)
+        cur.execute(f"""
+            INSERT INTO {db_eval}.{mon}.USAGE_METRICS (
+                metric_date, environment, service_type, agent_or_sv_name,
+                total_requests, successful_requests, failed_requests,
+                total_input_tokens, total_output_tokens, total_tokens,
+                estimated_credits, avg_latency_ms, p50_latency_ms, p95_latency_ms, p99_latency_ms, unique_users)
+            SELECT
+                DATEADD('day', -seq4(), CURRENT_DATE()),
+                '{env_name}', 'cortex_agent', '{agent_short}',
+                UNIFORM(25, 70, RANDOM()),
+                UNIFORM(22, 65, RANDOM()),
+                UNIFORM(0, 5, RANDOM()),
+                UNIFORM(3000000, 8000000, RANDOM()),
+                UNIFORM(10000, 30000, RANDOM()),
+                UNIFORM(3010000, 8030000, RANDOM()),
+                ROUND(UNIFORM(1.5, 5.0, RANDOM())::FLOAT, 2),
+                UNIFORM(15000, 35000, RANDOM()),
+                UNIFORM(10000, 25000, RANDOM()),
+                UNIFORM(25000, 55000, RANDOM()),
+                UNIFORM(40000, 80000, RANDOM()),
+                UNIFORM(3, 12, RANDOM())
+            FROM TABLE(GENERATOR(ROWCOUNT => 30))
+        """)
+
+        # Feedback daily summary (30 days)
+        cur.execute(f"""
+            INSERT INTO {db_eval}.{mon}.FEEDBACK_DAILY_SUMMARY (
+                summary_date, environment, agent_or_sv_name,
+                total_feedback, positive_count, neutral_count, negative_count,
+                avg_rating, avg_sentiment_score, negative_pct, computed_at)
+            SELECT
+                DATEADD('day', -seq4(), CURRENT_DATE()),
+                '{env_name}', '{agent_short}',
+                UNIFORM(5, 15, RANDOM()),
+                UNIFORM(3, 10, RANDOM()),
+                UNIFORM(1, 4, RANDOM()),
+                UNIFORM(0, 3, RANDOM()),
+                ROUND(UNIFORM(3.2, 4.5, RANDOM())::FLOAT, 1),
+                ROUND(UNIFORM(0.1, 0.7, RANDOM())::FLOAT, 2),
+                ROUND(UNIFORM(5, 25, RANDOM())::FLOAT, 1),
+                CURRENT_TIMESTAMP()
+            FROM TABLE(GENERATOR(ROWCOUNT => 30))
+        """)
+
+        # Eval accuracy trend (10 entries over 30 days, every ~3 days)
+        cur.execute(f"""
+            INSERT INTO {db_eval}.{mon}.SCHEDULED_EVAL_RUNS (
+                run_type, environment, target_name, accuracy_pct, threshold_pct,
+                passed_threshold, total_questions, passed_questions, failed_questions, run_timestamp)
+            SELECT
+                'weekly_eval', '{env_name}', '{agent_short}',
+                ROUND(UNIFORM(72, 92, RANDOM())::FLOAT, 1),
+                65,
+                TRUE,
+                30, UNIFORM(20, 28, RANDOM()), UNIFORM(2, 10, RANDOM()),
+                DATEADD('day', -seq4() * 3, CURRENT_TIMESTAMP())
+            FROM TABLE(GENERATOR(ROWCOUNT => 10))
+        """)
+
+        print("    Historical data seeded (30 days quality + usage + feedback, 10 eval runs).")
+    except Exception as e:
+        print(f"    WARN: Historical seed failed: {str(e)[:120]}")
 
 
 def _generate_mock_feedback(conn, cfg):

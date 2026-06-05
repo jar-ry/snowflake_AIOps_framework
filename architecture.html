@@ -456,9 +456,9 @@
         <rect x="365" y="86" width="330" height="100" rx="6" fill="#0D2B45" stroke="#F5A623" stroke-width="1"/>
         <text x="380" y="103" fill="#F5A623" font-size="10" font-weight="600" font-family="Inter,sans-serif">LAYER 1 — STRUCTURAL AUDIT</text>
         <text x="380" y="120" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">Semantic View: docs, naming, metadata, relationships,</text>
-        <text x="380" y="133" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">inconsistencies, duplicates (7 check categories)</text>
-        <text x="380" y="152" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">Agent: answer_correctness, logical_consistency, safety</text>
-        <text x="380" y="165" fill="#8892B0" font-size="9" font-family="Inter,sans-serif">(EXECUTE_AI_EVALUATION — native Snowflake metrics)</text>
+        <text x="380" y="133" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">inconsistencies, duplicates (6 check categories)</text>
+        <text x="380" y="152" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">Agent: 2 built-in + 6 custom LLM-judged metrics</text>
+        <text x="380" y="165" fill="#8892B0" font-size="9" font-family="Inter,sans-serif">(EXECUTE_AI_EVALUATION — configurable metric set)</text>
         <rect x="630" y="92" width="55" height="18" rx="4" fill="rgba(245,166,35,0.15)"/>
         <text x="657" y="105" text-anchor="middle" fill="#F5A623" font-size="8" font-weight="600" font-family="Inter,sans-serif">GATE 1</text>
 
@@ -471,7 +471,7 @@
         <text x="380" y="234" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">SV: Easy (10) · Hard (10) · Ambiguous (10)</text>
         <text x="380" y="247" fill="#8892B0" font-size="9" font-family="Inter,sans-serif">SQL result comparison + LLM-as-a-Judge</text>
         <text x="380" y="266" fill="#CCD6F6" font-size="9.5" font-family="Inter,sans-serif">Agent: Answerable (15) · Out of Scope (10) · Adversarial (10)</text>
-        <text x="380" y="279" fill="#8892B0" font-size="9" font-family="Inter,sans-serif">GPA Framework: Answer Correctness · Groundedness · Logical Consistency</text>
+        <text x="380" y="279" fill="#8892B0" font-size="9" font-family="Inter,sans-serif">GPA Framework: 2 built-in + 6 custom LLM-judged metrics (configurable)</text>
         <rect x="630" y="206" width="55" height="18" rx="4" fill="rgba(100,255,218,0.15)"/>
         <text x="657" y="219" text-anchor="middle" fill="#64FFDA" font-size="8" font-weight="600" font-family="Inter,sans-serif">GATE 2</text>
 
@@ -557,7 +557,7 @@
       <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
         <div class="label">PR Opened</div>
         <div class="title">Audit Gate</div>
-        <div class="desc">7 structural checks</div>
+        <div class="desc">6 structural checks</div>
       </div>
       <div class="flow-gap"></div>
       <div class="flow-step" style="border-top: 2px solid var(--snow-blue);">
@@ -643,7 +643,7 @@
 <section id="audit">
   <div class="container">
     <h2><span class="num">03</span>Semantic View Audit Engine</h2>
-    <p class="dim">Static analysis of semantic view definitions — runs without a Snowflake connection. Parses both YAML and SQL DDL formats. <strong style="color:var(--red)">Blocks deployment on CRITICAL or ERROR findings.</strong></p>
+    <p class="dim">Static analysis of semantic view definitions — runs without a Snowflake connection. Parses both YAML and SQL DDL formats. <strong style="color:var(--red)">Blocks deployment on CRITICAL or ERROR findings (CD only; CI reports findings to the PR without blocking).</strong></p>
 
     <div class="card-grid">
       <div class="card">
@@ -779,14 +779,19 @@
           </tbody>
         </table>
         <table style="margin-top:16px;">
-          <thead><tr><th>Metric</th><th>Description</th></tr></thead>
+          <thead><tr><th>Metric</th><th>Type</th><th>Description</th></tr></thead>
           <tbody>
-            <tr><td>Answer Correctness</td><td>Final answer matches expected ground truth?</td></tr>
-            <tr><td>Groundedness</td><td>Response supported by tool outputs/data?</td></tr>
-            <tr><td>Logical Consistency</td><td>Steps coherent, no contradictions or reasoning errors?</td></tr>
-            <tr><td>Safety</td><td>Handles boundaries correctly?</td></tr>
+            <tr><td>Answer Correctness</td><td>Built-in</td><td>Final answer matches expected ground truth?</td></tr>
+            <tr><td>Logical Consistency</td><td>Built-in</td><td>Steps coherent, no contradictions or reasoning errors?</td></tr>
+            <tr><td>Safety</td><td>Custom LLM-judged</td><td>Handles boundaries and scope correctly?</td></tr>
+            <tr><td>Groundedness</td><td>Custom LLM-judged</td><td>Response supported by tool outputs/data?</td></tr>
+            <tr><td>Execution Efficiency</td><td>Custom LLM-judged</td><td>Optimal tool selection and execution path?</td></tr>
+            <tr><td>Answer Relevance</td><td>Custom LLM-judged</td><td>Response addresses and covers the question?</td></tr>
+            <tr><td>Conciseness</td><td>Custom LLM-judged</td><td>Answer without unnecessary verbosity?</td></tr>
+            <tr><td>PII Leakage</td><td>Custom LLM-judged</td><td>No individual-level PII exposed?</td></tr>
           </tbody>
         </table>
+        <p style="font-size:0.82rem; color:var(--text-dim); margin-top:8px;">Metric set is configurable per environment in <code>thresholds.yaml</code> — each metric is one LLM-judge call per question (cost lever).</p>
       </div>
     </div>
 
@@ -906,6 +911,7 @@
     <p class="dim">Automated Snowflake Tasks run daily aggregations and health checks. Snowflake Alerts fire on threshold breaches. A Streamlit dashboard provides a unified view.</p>
 
     <h3>Automated Schedules</h3>
+    <p class="dim" style="margin-bottom:12px;">Schedules are configurable via <code>config/schedules.yaml</code> (profiles: <code>demo</code> = every 15 min, <code>prod</code> = daily/weekly). The table below shows the <code>prod</code> profile defaults.</p>
     <table>
       <thead><tr><th>Schedule</th><th>Task</th><th>Runtime</th></tr></thead>
       <tbody>
@@ -960,7 +966,7 @@
         <h4><span class="icon">🏥</span> Health Failure</h4>
         <ul>
           <li>CRITICAL: Any health check UNHEALTHY</li>
-          <li>7 checks: SV, agent, analyst, data, errors</li>
+          <li>7 checks: SV, agent, analyst, freshness, errors, alerts</li>
         </ul>
       </div>
     </div>
@@ -1000,7 +1006,7 @@
         <p>Ratings, sentiment</p>
       </div>
       <div class="card" style="text-align:center; padding:16px;">
-        <h4 style="justify-content:center;">Token Costs</h4>
+        <h4 style="justify-content:center;">Credits</h4>
         <p>Cost, volume, latency</p>
       </div>
       <div class="card" style="text-align:center; padding:16px;">
@@ -1130,16 +1136,24 @@
         <tr><td><code>bootstrap.py</code></td><td><strong>One-command setup</strong> — runs all SQL, deploys DEV SV/agent, runs first eval, deploys SiS dashboard</td></tr>
         <tr><td><code>setup/deploy.py</code></td><td>Deploy SV or agent to an environment (config-driven; used by bootstrap and CI)</td></tr>
         <tr><td><code>01_create_databases.sql</code></td><td>DEV/PROD databases, eval results tables, warehouse</td></tr>
-        <tr><td><code>02_create_tables.sql</code></td><td>CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES</td></tr>
-        <tr><td><code>03_seed_data.sql</code></td><td>500 customers, 100 products, 20 stores, 5,000 orders</td></tr>
         <tr><td><code>04_rbac_setup.sql</code></td><td>Analyst/Reviewer/Deployer/Admin roles + grants</td></tr>
         <tr><td><code>05_observability_setup.sql</code></td><td>Views over snowflake.local.ai_observability_events</td></tr>
-        <tr><td><code>06_eval_dataset_setup.sql</code></td><td>Ground truth datasets for EXECUTE_AI_EVALUATION</td></tr>
         <tr><td><code>07_monitoring_tables.sql</code></td><td>Feedback, usage, health, alert, quality tables</td></tr>
-        <tr><td><code>08_monitoring_tasks.sql</code></td><td>5 Snowflake Tasks + 2 stored procedures</td></tr>
-        <tr><td><code>09_monitoring_views.sql</code></td><td>8 trend views for Snowsight dashboards</td></tr>
-        <tr><td><code>10_monitoring_alerts.sql</code></td><td>7 Snowflake Alerts with severity escalation</td></tr>
-        <tr><td><code>11_interaction_quality_engine.sql</code></td><td>Rules-based quality detection (no LLM required)</td></tr>
+        <tr><td><code>08_monitoring_tasks.sql</code></td><td>Scheduled Tasks template (5 tasks + 2 stored procedures; bootstrap renders with configurable schedule profile)</td></tr>
+        <tr><td><code>09_monitoring_views.sql</code></td><td>Trend views for Snowsight dashboards</td></tr>
+        <tr><td><code>10_monitoring_alerts.sql</code></td><td>Snowflake Alerts (6 alerts with severity escalation)</td></tr>
+        <tr><td><code>11_interaction_quality_engine.sql</code></td><td>Rules-based interaction quality detection + 1 alert</td></tr>
+        <tr><td><code>teardown.sql</code></td><td>Token-rendered full purge (python setup/bootstrap.py --render setup/teardown.sql)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Instance Data Scripts (examples/retail/data/)</h3>
+    <table>
+      <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>02_create_tables.sql</code></td><td>CUSTOMERS, PRODUCTS, ORDERS, ORDER_ITEMS, RETURNS, STORES</td></tr>
+        <tr><td><code>03_seed_data.sql</code></td><td>500 customers, 100 products, 20 stores, 5,000 orders</td></tr>
+        <tr><td><code>06_eval_dataset_setup.sql</code></td><td>Ground truth datasets for EXECUTE_AI_EVALUATION</td></tr>
       </tbody>
     </table>
 
@@ -1147,11 +1161,26 @@
     <table>
       <thead><tr><th>File</th><th>Purpose</th><th>Connection Required</th></tr></thead>
       <tbody>
-        <tr><td><code>audit_semantic_view.py</code></td><td>Best practices audit — 7 check categories, dual YAML/SQL parser</td><td>No (DDL mode) / Yes (live mode)</td></tr>
+        <tr><td><code>audit_semantic_view.py</code></td><td>Best practices audit — 6 check categories, dual YAML/SQL parser</td><td>No (DDL mode) / Yes (live mode)</td></tr>
         <tr><td><code>evaluate_semantic_view.py</code></td><td>Batch evaluation — 30 questions across 3 categories</td><td>Yes</td></tr>
         <tr><td><code>audit_agent.py</code></td><td>Native Snowflake EXECUTE_AI_EVALUATION (GPA framework)</td><td>Yes</td></tr>
         <tr><td><code>llm_judge.py</code></td><td>LLM-as-a-Judge for SV ambiguous question evaluation</td><td>Yes</td></tr>
-        <tr><td><code>utils.py</code></td><td>Shared helpers: connection management, SQL execution</td><td>—</td></tr>
+        <tr><td><code>discover_account.py</code></td><td>Account discovery: agents, semantic views, tools, warehouses visible to role</td><td>Yes</td></tr>
+        <tr><td><code>generate_question_bank.py</code></td><td>Starter question-bank generator for customer onboarding (answerable + out-of-scope + adversarial)</td><td>Yes</td></tr>
+        <tr><td><code>adversarial_library.yaml</code></td><td>Curated, domain-agnostic adversarial attack patterns (used by generator)</td><td>—</td></tr>
+        <tr><td><code>utils.py</code></td><td>Shared helpers: connection management, instance resolution, config loading</td><td>—</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Monitoring Scripts (monitoring/)</h3>
+    <table>
+      <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>dashboard.py</code></td><td>Streamlit in Snowflake (SiS) 6-tab monitoring dashboard</td></tr>
+        <tr><td><code>health_check.py</code></td><td>PROD health checks (7 checks: SV, agent, analyst, data freshness, errors, alerts)</td></tr>
+        <tr><td><code>cost_reconcile.py</code></td><td>Reconcile estimated vs actual AI Credits (admin-level ACCOUNT_USAGE check)</td></tr>
+        <tr><td><code>snowflake.yml.template</code></td><td>SiS deployment descriptor (token-rendered at deploy time)</td></tr>
+        <tr><td><code>pyproject.toml</code></td><td>SiS package dependencies (Streamlit + Snowflake connector)</td></tr>
       </tbody>
     </table>
 
@@ -1181,11 +1210,11 @@
     <table>
       <thead><tr><th>File</th><th>Purpose</th></tr></thead>
       <tbody>
-        <tr><td><code>config/environments.yaml</code></td><td>Environment-specific Snowflake configuration (databases, warehouses, LLM model)</td></tr>
-        <tr><td><code>config/thresholds.yaml</code></td><td>Accuracy thresholds per environment (DEV 60% → PROD 85%)</td></tr>
-        <tr><td><code>config/monitoring.yaml</code></td><td>Alert thresholds, schedules, health check params, notification config</td></tr>
         <tr><td><code>config/defaults.yaml</code></td><td>Framework defaults: LLM models + Snowflake credit pricing (merged under instance config)</td></tr>
-        <tr><td><code>monitoring/snowflake.yml.template</code></td><td>SiS deployment descriptor (token-rendered at deploy time) for the monitoring dashboard</td></tr>
+        <tr><td><code>examples/retail/config/environments.yaml</code></td><td>Instance-specific Snowflake configuration (databases, warehouses, roles, paths)</td></tr>
+        <tr><td><code>examples/retail/config/thresholds.yaml</code></td><td>Accuracy thresholds per environment (DEV 60% → PROD 85%)</td></tr>
+        <tr><td><code>examples/retail/config/monitoring.yaml</code></td><td>Alert thresholds, health check params, notification config</td></tr>
+        <tr><td><code>examples/retail/config/schedules.yaml</code></td><td>Task schedule profiles (demo: every 15 min / prod: daily/weekly)</td></tr>
       </tbody>
     </table>
 
@@ -1196,6 +1225,7 @@
         <tr><td><code>examples/retail/demo/demo_runbook.md</code></td><td>Step-by-step demo script with talking points</td></tr>
         <tr><td><code>examples/retail/demo/snowsight_walkthrough.md</code></td><td>Snowsight UI walkthrough for agent + observability</td></tr>
         <tr><td><code>examples/retail/demo/market_positioning.md</code></td><td>Market positioning and differentiation vs alternatives</td></tr>
+        <tr><td><code>examples/retail/seed/seed_demo.py</code></td><td>Demo dashboard seeding (health check + eval + agent queries)</td></tr>
       </tbody>
     </table>
   </div>

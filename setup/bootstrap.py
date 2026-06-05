@@ -540,13 +540,10 @@ $$""",
         except Exception as e:
             print(f"  WARN: {name}: {str(e)[:100]}")
 
-    for name, schedule, body in weekly_tasks:
-        try:
-            cur.execute(f"CREATE OR REPLACE TASK {db_eval}.{mon}.{name} WAREHOUSE = {wh} SCHEDULE = '{schedule}' AS {body}")
-            cur.execute(f"ALTER TASK {db_eval}.{mon}.{name} RESUME")
-            print(f"  OK: {name}")
-        except Exception as e:
-            print(f"  WARN: {name}: {str(e)[:100]}")
+    # PROD smoke-test tasks are NOT created here. They are created by the CD
+    # pipeline after the first successful PROD deployment (semantic_view_cd.yml
+    # and agent_cd.yml). This avoids spam failures while PROD is empty.
+    print(f"  SKIP: TASK_WEEKLY_SV_EVAL, TASK_WEEKLY_AGENT_EVAL (created by CD pipeline on first PROD deploy)")
 
 
 def deploy_dashboard_sis():

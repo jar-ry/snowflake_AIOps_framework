@@ -40,31 +40,8 @@ FROM {{DB_EVAL}}.RESULTS.SEMANTIC_VIEW_EVAL_RUNS
 
 UNION ALL
 
-SELECT
-    run_timestamp::DATE                         AS eval_date,
-    'agent'                                     AS eval_type,
-    environment,
-    agent_name                                  AS target_name,
-    accuracy_pct,
-    threshold_pct,
-    passed_threshold,
-    total_questions,
-    passed_questions,
-    git_commit_sha,
-    git_branch,
-    LAG(accuracy_pct) OVER (
-        PARTITION BY environment, agent_name
-        ORDER BY run_timestamp
-    )                                           AS prev_accuracy_pct,
-    accuracy_pct - COALESCE(LAG(accuracy_pct) OVER (
-        PARTITION BY environment, agent_name
-        ORDER BY run_timestamp
-    ), accuracy_pct)                            AS accuracy_delta,
-    run_timestamp
-FROM {{DB_EVAL}}.RESULTS.AGENT_EVAL_RUNS
-
-UNION ALL
-
+-- Agent eval results come from SCHEDULED_EVAL_RUNS (populated by audit_agent.py
+-- which uses native EXECUTE_AI_EVALUATION and logs summary to this table).
 SELECT
     run_timestamp::DATE                         AS eval_date,
     run_type                                    AS eval_type,

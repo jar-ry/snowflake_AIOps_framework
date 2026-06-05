@@ -94,10 +94,30 @@ Ask 3-4 questions:
 
 **See:** demo/snowsight_walkthrough.md Step 3
 
-Run the eval query. Walk through:
+**Option A: Run live (impressive, but takes ~8 min — start before the demo or during Section 3)**
+
+```bash
+# Quick win: SV audit runs in <1 second (shows structural governance)
+python evaluation/audit_semantic_view.py --environment dev --output sv_audit.json
+
+# Full eval: run in background before the demo, show results file
+python evaluation/evaluate_semantic_view.py --environment dev --output sv_eval.json
+python evaluation/audit_agent.py --environment dev --output agent_eval.json
+```
+
+**Tip:** Kick off `audit_agent.py` before the demo starts (it takes ~8 min). Run the instant SV audit live during this section, then show the pre-computed agent results.
+
+**Option B: Show pre-computed results from Snowsight (faster)**
+
+Run the eval query in Snowsight. Walk through:
 - 31/35 perfect scores
 - 4 failures — drill into each one
 - THE KEY MOMENT: "2 of these failures are bugs in OUR ground truth, not the agent. The framework caught our own mistakes."
+
+**Key talking points:**
+- "In production, you never run this locally. CI runs it automatically on every PR."
+- "The results get posted directly to the PR as a comment — reviewers see accuracy before they approve."
+- "If accuracy drops below threshold, the merge is blocked."
 
 **Transition:** "So the framework doesn't just evaluate the agent — it evaluates the quality of our evaluation itself. That's meta-governance."
 

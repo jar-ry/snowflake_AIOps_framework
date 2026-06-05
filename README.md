@@ -104,8 +104,6 @@ This README is the entry point and getting-started guide. Deeper reference and e
 │  │  RETAIL_AI_EVAL (shared across envs)                         │   │
 │  │  RESULTS.SEMANTIC_VIEW_EVAL_RUNS                             │   │
 │  │  RESULTS.SEMANTIC_VIEW_EVAL_DETAILS                          │   │
-│  │  RESULTS.AGENT_EVAL_RUNS                                     │   │
-│  │  RESULTS.AGENT_EVAL_DETAILS                                  │   │
 │  │  OBSERVABILITY views (over ai_observability_events)          │   │
 │  │  MONITORING.* (feedback, usage, health, alerts, quality)    │   │
 │  └──────────────────────────────────────────────────────────────┘   │
@@ -140,7 +138,7 @@ This single command will:
 3. Set up RBAC roles (`ANALYST`, `REVIEWER`, `DEPLOYER`, `ADMIN`)
 4. Create observability views over `ai_observability_events`
 5. Create evaluation datasets (15 ground truth questions)
-6. Create monitoring tables, views, tasks (5 daily/weekly), and alerts (7)
+6. Create monitoring tables, views, tasks (6 daily/weekly), and alerts (7)
 7. Deploy the semantic view to DEV
 8. Deploy the Cortex Agent to DEV
 9. Set your user's default warehouse to `RETAIL_AI_EVAL_WH`
@@ -163,7 +161,9 @@ snow streamlit deploy --replace
 
 The dashboard shows evaluation trends, feedback, token costs, health status, and alerts across 6 tabs.
 
-### Run Evaluations Locally
+### Run Evaluations Locally (Demo / Debugging)
+
+In production, evaluations run automatically in CI on every PR (see [CI/CD Pipeline](#cicd-pipeline-flow)). Use local execution for demos or debugging CI failures:
 
 ```bash
 # SV best practices audit (no Snowflake connection needed; uses the active instance's SV)
@@ -171,17 +171,25 @@ python evaluation/audit_semantic_view.py \
   --environment dev \
   --output sv_audit.json
 
-# SV question bank evaluation (requires Snowflake connection)
+# SV question bank evaluation (requires Snowflake connection, ~5 min)
 python evaluation/evaluate_semantic_view.py \
   --environment dev \
   --output sv_eval.json
 
-# Agent native GPA evaluation (requires Snowflake connection)
+# Agent native GPA evaluation (requires Snowflake connection, ~8 min)
 # Metric set defaults to thresholds.yaml agent.<env>.metrics; override with --metrics.
 python evaluation/audit_agent.py \
   --environment dev \
   --output agent_eval.json
+
+# Discover agents and semantic views in your account (onboarding aid)
+python evaluation/discover_account.py --format json
+
+# Generate a starter question bank from the active instance's semantic view
+python evaluation/generate_question_bank.py
 ```
+
+> **Normal workflow:** Edit SV/agent → push → open PR → CI runs audit + eval automatically → results posted as PR comment. You don't need to run evaluations locally in the standard development loop.
 
 ### Set Up CI/CD
 
@@ -223,19 +231,24 @@ ai_evaluation_framework/
 │   ├── 07_monitoring_tables.sql       # Feedback, usage, health, alert tables
 │   ├── 08_monitoring_tasks.sql        # Scheduled Tasks (daily + weekly)
 │   ├── 09_monitoring_views.sql        # Trend views for Snowsight dashboards
-│   ├── 10_monitoring_alerts.sql       # Snowflake Alerts (7 alert types)
-│   ├── 11_interaction_quality_engine.sql # Rules-based interaction quality detection
+│   ├── 10_monitoring_alerts.sql       # Snowflake Alerts (6 alerts)
+│   ├── 11_interaction_quality_engine.sql # Rules-based interaction quality detection + 1 alert
 │   └── teardown.sql                   # Token-rendered full purge (python setup/bootstrap.py --render setup/teardown.sql)
 ├── evaluation/                         # FRAMEWORK: evaluation engine (config-driven)
 │   ├── audit_semantic_view.py          # Best practices audit (naming, docs, metadata)
 │   ├── audit_agent.py                  # Native EXECUTE_AI_EVALUATION (GPA framework)
 │   ├── evaluate_semantic_view.py       # Batch SV evaluation (SQL comparison + LLM judge)
 │   ├── llm_judge.py                   # LLM-as-a-Judge for SV evaluation
+│   ├── discover_account.py            # Account discovery: agents, SVs, tools, warehouses
+│   ├── generate_question_bank.py      # Starter question-bank generator for onboarding
+│   ├── adversarial_library.yaml       # Curated adversarial attack patterns (domain-agnostic)
 │   └── utils.py                       # Shared helpers + instance resolver (load_config, instance_dir)
 ├── monitoring/                         # FRAMEWORK: health check & monitoring
 │   ├── dashboard.py                   # Streamlit in Snowflake (SiS) dashboard (self-locates eval DB)
+│   ├── health_check.py               # PROD health checks (7 checks)
+│   ├── cost_reconcile.py             # Reconcile estimated vs actual AI Credits (admin check)
 │   ├── snowflake.yml.template         # SiS deploy descriptor (token-rendered at deploy time)
-│   └── health_check.py               # PROD health checks (7 checks)
+│   └── pyproject.toml                 # SiS package dependencies
 ├── config/
 │   └── defaults.yaml                  # FRAMEWORK defaults: LLM models + Snowflake credit pricing (universal)
 ├── .github/workflows/                  # FRAMEWORK: CI/CD pipelines (trigger on examples/retail/**)
@@ -265,7 +278,6 @@ ai_evaluation_framework/
 │           ├── snowsight_walkthrough.md
 │           └── market_positioning.md
 ├── docs/                              # Reference & explanation docs (Diátaxis)
-
 │   ├── README.md                      # Documentation index / map
 │   ├── reference/                     # Lookup-style: cost model
 │   └── explanation/                   # Design & intent: input governance
@@ -671,6 +683,14 @@ python monitoring/health_check.py --environment prod --output health.json
 
 Checks: SV exists, agent exists, analyst responds, agent responds, data freshness, error rate, active alerts.
 
+### Cost Reconciliation
+
+Reconcile the framework's estimated evaluation credits against actual Snowflake AI Credits (requires ACCOUNT_USAGE access):
+
+```bash
+python monitoring/cost_reconcile.py --environment dev --days 30
+```
+
 ### Interaction Quality Rules Engine
 
 The framework includes a **rules-based quality engine** (`setup/11_interaction_quality_engine.sql`) that scans `snowflake.local.ai_observability_events` for problematic agent interactions — no LLM required:
@@ -722,12 +742,12 @@ cd monitoring && snow streamlit deploy --replace
 |-----|------------|------|
 | **Overview** | `V_WEEKLY_EXECUTIVE_SUMMARY`, `V_HEALTH_DASHBOARD` | KPIs (requests, success rate, cost, latency), weekly trends, health status |
 | **Evaluations** | `V_EVAL_ACCURACY_TREND` | Accuracy trends over time, eval history table |
-| **Interaction Quality** | `V_INTERACTION_QUALITY_DASHBOARD`, `V_INTERACTION_QUALITY_FLAGS` | Flagged % trend, request/thread flag breakdown, flagged interaction details |
+| **Interaction Quality** | `OBSERVABILITY.AGENT_TRACES` (live CTE), `V_INTERACTION_QUALITY_FLAGS` | Flagged % trend, request/thread flag breakdown, flagged interaction details |
 | **Feedback** | `V_FEEDBACK_TREND` | Avg rating, negative %, sentiment distribution stacked chart |
-| **Token Costs** | `V_TOKEN_COST_TREND` | Cost by service, token volume, latency avg vs P95 |
+| **Credits** | `OBSERVABILITY.AGENT_TRACES` (live query) | Cache-aware credit estimation, token volume, latency |
 | **Alerts** | `V_ACTIVE_ALERTS`, `ALERT_HISTORY` | Active alert cards with severity, full alert history table |
 
-**Sidebar filters:** Environment (All/PROD/DEV), days back (7-90).
+**Sidebar filters:** Environment, time window (1h / 6h / 24h / 7d / 30d), granularity (15 min / 1 hour / 1 day).
 
 Configure Snowflake connection in `.streamlit/secrets.toml`:
 ```toml
