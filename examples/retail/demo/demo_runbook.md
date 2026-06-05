@@ -113,7 +113,7 @@ Speed-walk the 6 tabs:
 - Interaction Quality (45 sec): THE DIFFERENTIATOR — zero LLM cost rules
 - Feedback (15 sec): user sentiment
 - Token Costs (15 sec): cost governance
-- Alerts (30 sec): 3 active alerts, 7 alert types
+- Alerts (30 sec): 1 active alert (incident criticals already acknowledged), 7 alert types
 
 **Transition:** "All of this runs on Snowflake Tasks — daily automation, no external orchestrator. The interaction quality engine costs zero in LLM tokens because it's pure SQL over native observability events."
 

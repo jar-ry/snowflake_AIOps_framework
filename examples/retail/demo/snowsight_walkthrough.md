@@ -93,7 +93,7 @@ LIMIT 10;
 
 ### Tab 2: Evaluations
 - Accuracy trend: steady ~90%, **drops to ~69% during the May 25-29 incident (falls below the 85% gate), then recovers to ~92%**
-- Red threshold line at 85% (DEV gate) — points below it are failing runs
+- Red threshold line at 85% (PROD gate) — points below it are failing runs
 - "Each commit is evaluated. CI blocks merge if below threshold. You can SEE the regression week and the recovery."
 
 ### Tab 3: Interaction Quality
